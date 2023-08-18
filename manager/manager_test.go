@@ -52,7 +52,6 @@ func createManagerAndAddContainers(
 	f func(*containertest.MockContainerHandler),
 	t *testing.T,
 ) *manager {
-	container.ClearContainerHandlerFactories()
 	mif := &manager{
 		containers:   make(map[namespacedContainerName]*containerData),
 		quitChannels: make([]chan error, 0, 2),
@@ -91,7 +90,6 @@ func createManagerAndAddSubContainers(
 	f func(*containertest.MockContainerHandler),
 	t *testing.T,
 ) *manager {
-	container.ClearContainerHandlerFactories()
 	mif := &manager{
 		containers:   make(map[namespacedContainerName]*containerData),
 		quitChannels: make([]chan error, 0, 2),

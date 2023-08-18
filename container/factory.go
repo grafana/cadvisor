@@ -27,6 +27,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
+type Factories = map[watcher.ContainerWatchSource][]ContainerHandlerFactory
+
 type ContainerHandlerFactory interface {
 	// Create a new ContainerHandler using this factory. CanHandleAndAccept() must have returned true.
 	NewContainerHandler(name string, metadataEnvAllowList []string, inHostNamespace bool) (c ContainerHandler, err error)
@@ -179,9 +181,9 @@ type Plugin interface {
 	// A returned error here is fatal.
 	InitializeFSContext(context *fs.Context) error
 
-	// Register is invoked when starting a manager. It can optionally return a container watcher.
-	// A returned error is logged, but is not fatal.
-	Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics MetricSet) (watcher.ContainerWatcher, error)
+	// Register is invoked when starting a manager. A returned error is logged,
+	// but is not fatal.
+	Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics MetricSet) (Factories, error)
 }
 
 func RegisterPlugin(name string, plugin Plugin) error {
@@ -208,59 +210,32 @@ func InitializeFSContext(context *fs.Context) error {
 	return nil
 }
 
-func InitializePlugins(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics MetricSet) []watcher.ContainerWatcher {
+func InitializePlugins(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics MetricSet) Factories {
 	pluginsLock.Lock()
 	defer pluginsLock.Unlock()
 
-	containerWatchers := []watcher.ContainerWatcher{}
+	allFactories := make(Factories)
+
 	for name, plugin := range plugins {
-		watcher, err := plugin.Register(factory, fsInfo, includedMetrics)
+		factories, err := plugin.Register(factory, fsInfo, includedMetrics)
 		if err != nil {
 			klog.V(5).Infof("Registration of the %s container factory failed: %v", name, err)
 		}
-		if watcher != nil {
-			containerWatchers = append(containerWatchers, watcher)
+
+		for watchType, list := range factories {
+			allFactories[watchType] = append(allFactories[watchType], list...)
 		}
 	}
-	return containerWatchers
-}
-
-// TODO(vmarmol): Consider not making this global.
-// Global list of factories.
-var (
-	factories     = map[watcher.ContainerWatchSource][]ContainerHandlerFactory{}
-	factoriesLock sync.RWMutex
-)
-
-// Register a ContainerHandlerFactory. These should be registered from least general to most general
-// as they will be asked in order whether they can handle a particular container.
-func RegisterContainerHandlerFactory(factory ContainerHandlerFactory, watchTypes []watcher.ContainerWatchSource) {
-	factoriesLock.Lock()
-	defer factoriesLock.Unlock()
-
-	for _, watchType := range watchTypes {
-		factories[watchType] = append(factories[watchType], factory)
-	}
-}
-
-// Returns whether there are any container handler factories registered.
-func HasFactories() bool {
-	factoriesLock.Lock()
-	defer factoriesLock.Unlock()
-
-	return len(factories) != 0
+	return allFactories
 }
 
 // Create a new ContainerHandler for the specified container.
-func NewContainerHandler(name string, watchType watcher.ContainerWatchSource, metadataEnvAllowList []string, inHostNamespace bool) (ContainerHandler, bool, error) {
-	factoriesLock.RLock()
-	defer factoriesLock.RUnlock()
-
+func NewContainerHandler(factories Factories, name string, watchType watcher.ContainerWatchSource, metadataEnvAllowList []string, inHostNamespace bool) (ContainerHandler, bool, error) {
 	// Create the ContainerHandler with the first factory that supports it.
 	// Note that since RawContainerHandler can support a wide range of paths,
 	// it's evaluated last just to make sure if any other ContainerHandler
 	// can support it.
-	for _, factory := range GetReorderedFactoryList(watchType) {
+	for _, factory := range factories[watchType] {
 		canHandle, canAccept, err := factory.CanHandleAndAccept(name)
 		if err != nil {
 			klog.V(4).Infof("Error trying to work out if we can handle %s: %v", name, err)
@@ -280,18 +255,7 @@ func NewContainerHandler(name string, watchType watcher.ContainerWatchSource, me
 	return nil, false, fmt.Errorf("no known factory can handle creation of container")
 }
 
-// Clear the known factories.
-func ClearContainerHandlerFactories() {
-	factoriesLock.Lock()
-	defer factoriesLock.Unlock()
-
-	factories = map[watcher.ContainerWatchSource][]ContainerHandlerFactory{}
-}
-
-func DebugInfo() map[string][]string {
-	factoriesLock.RLock()
-	defer factoriesLock.RUnlock()
-
+func DebugInfo(factories Factories) map[string][]string {
 	// Get debug information for all factories.
 	out := make(map[string][]string)
 	for _, factoriesSlice := range factories {
@@ -302,27 +266,4 @@ func DebugInfo() map[string][]string {
 		}
 	}
 	return out
-}
-
-// GetReorderedFactoryList returns the list of ContainerHandlerFactory where the
-// RawContainerHandler is always the last element.
-func GetReorderedFactoryList(watchType watcher.ContainerWatchSource) []ContainerHandlerFactory {
-	ContainerHandlerFactoryList := make([]ContainerHandlerFactory, 0, len(factories))
-
-	var rawFactory ContainerHandlerFactory
-	for _, v := range factories[watchType] {
-		if v != nil {
-			if v.String() == "raw" {
-				rawFactory = v
-				continue
-			}
-			ContainerHandlerFactoryList = append(ContainerHandlerFactoryList, v)
-		}
-	}
-
-	if rawFactory != nil {
-		ContainerHandlerFactoryList = append(ContainerHandlerFactoryList, rawFactory)
-	}
-
-	return ContainerHandlerFactoryList
 }

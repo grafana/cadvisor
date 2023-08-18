@@ -263,6 +263,7 @@ type manager struct {
 	allowDynamicHousekeeping bool
 	includedMetrics          container.MetricSet
 	containerWatchers        []watcher.ContainerWatcher
+	containerFactories       container.Factories
 	eventsChannel            chan watcher.ContainerEvent
 	collectorHTTPClient      *http.Client
 	perfManager              stats.Manager
@@ -288,7 +289,7 @@ func (m *manager) PodmanContainer(containerName string, query *info.ContainerInf
 
 // Start the container manager.
 func (m *manager) Start() error {
-	m.containerWatchers = container.InitializePlugins(m, m.fsInfo, m.includedMetrics)
+	m.containerFactories = container.InitializePlugins(m, m.fsInfo, m.includedMetrics)
 
 	err := raw.Register(m, m.fsInfo, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
 	if err != nil {
@@ -308,7 +309,7 @@ func (m *manager) Start() error {
 	}
 
 	// If there are no factories, don't start any housekeeping and serve the information we do have.
-	if !container.HasFactories() {
+	if len(m.containerFactories) == 0 {
 		return nil
 	}
 
@@ -921,7 +922,7 @@ func (m *manager) createContainerLocked(containerName string, watchSource watche
 		return nil
 	}
 
-	handler, accept, err := container.NewContainerHandler(containerName, watchSource, m.containerEnvMetadataWhiteList, m.inHostNamespace)
+	handler, accept, err := container.NewContainerHandler(m.containerFactories, containerName, watchSource, m.containerEnvMetadataWhiteList, m.inHostNamespace)
 	if err != nil {
 		return err
 	}
@@ -1317,7 +1318,7 @@ func parseEventsStoragePolicy() events.StoragePolicy {
 }
 
 func (m *manager) DebugInfo() map[string][]string {
-	debugInfo := container.DebugInfo()
+	debugInfo := container.DebugInfo(m.containerFactories)
 
 	// Get unique containers.
 	var conts map[*containerData]struct{}
