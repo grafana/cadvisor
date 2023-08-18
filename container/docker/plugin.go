@@ -23,7 +23,6 @@ import (
 	"github.com/google/cadvisor/container"
 	"github.com/google/cadvisor/fs"
 	info "github.com/google/cadvisor/info/v1"
-	"github.com/google/cadvisor/watcher"
 )
 
 const dockerClientTimeout = 10 * time.Second
@@ -47,9 +46,8 @@ func (p *plugin) InitializeFSContext(context *fs.Context) error {
 	return nil
 }
 
-func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (watcher.ContainerWatcher, error) {
-	err := Register(factory, fsInfo, includedMetrics)
-	return nil, err
+func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	return Register(factory, fsInfo, includedMetrics)
 }
 
 func retryDockerStatus() info.DockerStatus {
