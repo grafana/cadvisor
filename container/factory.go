@@ -187,6 +187,8 @@ type Plugin interface {
 }
 
 func RegisterPlugin(name string, plugin Plugin) error {
+	// TODO(rfratto): remove once plugins are passed directly to the manager.
+
 	pluginsLock.Lock()
 	defer pluginsLock.Unlock()
 	if _, found := plugins[name]; found {
@@ -194,19 +196,6 @@ func RegisterPlugin(name string, plugin Plugin) error {
 	}
 	klog.V(4).Infof("Registered Plugin %q", name)
 	plugins[name] = plugin
-	return nil
-}
-
-func InitializeFSContext(context *fs.Context) error {
-	pluginsLock.Lock()
-	defer pluginsLock.Unlock()
-	for name, plugin := range plugins {
-		err := plugin.InitializeFSContext(context)
-		if err != nil {
-			klog.V(5).Infof("Initialization of the %s context failed: %v", name, err)
-			return err
-		}
-	}
 	return nil
 }
 

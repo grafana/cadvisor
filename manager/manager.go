@@ -153,7 +153,7 @@ type HouskeepingConfig = struct {
 }
 
 // New takes a memory storage and returns a new manager.
-func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, houskeepingConfig HouskeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration) (Manager, error) {
+func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, houskeepingConfig HouskeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration) (Manager, error) {
 	if memoryCache == nil {
 		return nil, fmt.Errorf("manager requires memory storage")
 	}
@@ -172,8 +172,11 @@ func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, houskeepingConfig
 
 	context := fs.Context{}
 
-	if err := container.InitializeFSContext(&context); err != nil {
-		return nil, err
+	for name, plugin := range plugins {
+		if plugin.InitializeFSContext(&context); err != nil {
+			klog.V(5).Infof("Initialization of the %s context failed: %v", name, err)
+			return nil, err
+		}
 	}
 
 	fsInfo, err := fs.NewFsInfo(context)
@@ -192,6 +195,7 @@ func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, houskeepingConfig
 	eventsChannel := make(chan watcher.ContainerEvent, 16)
 
 	newManager := &manager{
+		plugins:                               plugins,
 		containers:                            make(map[namespacedContainerName]*containerData),
 		quitChannels:                          make([]chan error, 0, 2),
 		memoryCache:                           memoryCache,
@@ -247,6 +251,7 @@ type namespacedContainerName struct {
 }
 
 type manager struct {
+	plugins                  map[string]container.Plugin
 	containers               map[namespacedContainerName]*containerData
 	containersLock           sync.RWMutex
 	memoryCache              *memory.InMemoryCache
@@ -289,6 +294,7 @@ func (m *manager) PodmanContainer(containerName string, query *info.ContainerInf
 
 // Start the container manager.
 func (m *manager) Start() error {
+	// TODO(rfratto): replace with using m.plugins.
 	m.containerFactories = container.InitializePlugins(m, m.fsInfo, m.includedMetrics)
 
 	err := raw.Register(m, m.fsInfo, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
