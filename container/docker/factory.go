@@ -303,7 +303,10 @@ func ensureThinLsKernelVersion(kernelVersion string) error {
 }
 
 // Register root container before running this function!
-func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+func Register(options Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	// TODO(rfratto): use options instead of globals.
+	_ = options
+
 	client, err := Client()
 	if err != nil {
 		return nil, fmt.Errorf("unable to communicate with docker daemon: %v", err)

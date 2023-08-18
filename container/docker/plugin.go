@@ -29,10 +29,32 @@ const dockerClientTimeout = 10 * time.Second
 
 // NewPlugin returns an implementation of container.Plugin suitable for passing to container.RegisterPlugin()
 func NewPlugin() container.Plugin {
-	return &plugin{}
+	return &plugin{
+		options: Options{
+			DockerEndpoint: *ArgDockerEndpoint,
+			DockerTLS:      *ArgDockerTLS,
+			DockerCert:     *ArgDockerCert,
+			DockerKey:      *ArgDockerKey,
+			DockerCA:       *ArgDockerCA,
+		},
+	}
 }
 
-type plugin struct{}
+func NewPluginWithOptions(o Options) container.Plugin {
+	return &plugin{options: o}
+}
+
+type Options struct {
+	DockerEndpoint string
+	DockerTLS      bool
+	DockerCert     string
+	DockerKey      string
+	DockerCA       string
+}
+
+type plugin struct {
+	options Options
+}
 
 func (p *plugin) InitializeFSContext(context *fs.Context) error {
 	SetTimeout(dockerClientTimeout)
@@ -47,7 +69,7 @@ func (p *plugin) InitializeFSContext(context *fs.Context) error {
 }
 
 func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
-	return Register(factory, fsInfo, includedMetrics)
+	return Register(p.options, factory, fsInfo, includedMetrics)
 }
 
 func retryDockerStatus() info.DockerStatus {
