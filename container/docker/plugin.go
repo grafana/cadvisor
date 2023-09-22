@@ -39,6 +39,16 @@ type Options struct {
 	DockerCA       string
 }
 
+func DefaultOptions() Options {
+	return Options{
+		DockerEndpoint: "unix:///var/run/docker.sock",
+		DockerTLS:      false,
+		DockerCert:     "cert.pem",
+		DockerKey:      "key.pem",
+		DockerCA:       "ca.pem",
+	}
+}
+
 type plugin struct {
 	options Options
 }

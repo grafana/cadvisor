@@ -310,8 +310,8 @@ func HandleRequest(w http.ResponseWriter, containerManager manager.Manager) erro
 	dockerValidation, desc := validateDockerVersion(versionInfo.DockerVersion)
 	out += fmt.Sprintf(OutputFormat, "Docker version", dockerValidation, desc)
 
-	// TODO(@tpashalis) Pass docker opts for validating docker info
-	dockerInfoValidation, desc := validateDockerInfo(opts)
+	// TODO(@tpashalis) Pass docker opts for validating docker info.
+	dockerInfoValidation, desc := validateDockerInfo(docker.DefaultOptions())
 	out += fmt.Sprintf(OutputFormat, "Docker driver setup", dockerInfoValidation, desc)
 
 	ioSchedulerValidation, desc := validateIoScheduler(containerManager)
