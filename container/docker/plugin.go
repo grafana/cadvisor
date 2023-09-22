@@ -46,9 +46,9 @@ type plugin struct {
 func (p *plugin) InitializeFSContext(context *fs.Context) error {
 	SetTimeout(dockerClientTimeout)
 	// Try to connect to docker indefinitely on startup.
-	dockerStatus := retryDockerStatus()
+	dockerStatus := p.retryDockerStatus()
 	context.Docker = fs.DockerContext{
-		Root:         RootDir(),
+		Root:         p.options.RootDir(),
 		Driver:       dockerStatus.Driver,
 		DriverStatus: dockerStatus.DriverStatus,
 	}
@@ -59,12 +59,12 @@ func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, inc
 	return Register(p.options, factory, fsInfo, includedMetrics)
 }
 
-func retryDockerStatus() info.DockerStatus {
+func (p *plugin) retryDockerStatus() info.DockerStatus {
 	startupTimeout := dockerClientTimeout
 	maxTimeout := 4 * startupTimeout
 	for {
 		ctx, _ := context.WithTimeout(context.Background(), startupTimeout)
-		dockerStatus, err := StatusWithContext(ctx)
+		dockerStatus, err := p.options.StatusWithContext(ctx)
 		if err == nil {
 			return dockerStatus
 		}

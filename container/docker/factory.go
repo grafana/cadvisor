@@ -67,10 +67,10 @@ var (
 	disableThinLs = true
 )
 
-func RootDir() string {
+func (opts Options) RootDir() string {
 	dockerRootDirOnce.Do(func() {
 		for i := 0; i < rootDirRetries; i++ {
-			status, err := Status()
+			status, err := opts.Status()
 			if err == nil && status.RootDir != "" {
 				dockerRootDir = status.RootDir
 				break
@@ -120,6 +120,8 @@ type dockerFactory struct {
 	thinPoolWatcher *devicemapper.ThinPoolWatcher
 
 	zfsWatcher *zfs.ZfsWatcher
+
+	options Options
 }
 
 func (f *dockerFactory) String() string {
@@ -127,7 +129,7 @@ func (f *dockerFactory) String() string {
 }
 
 func (f *dockerFactory) NewContainerHandler(name string, metadataEnvAllowList []string, inHostNamespace bool) (handler container.ContainerHandler, err error) {
-	client, err := Client()
+	client, err := f.options.Client()
 	if err != nil {
 		return
 	}
@@ -154,6 +156,7 @@ func (f *dockerFactory) NewContainerHandler(name string, metadataEnvAllowList []
 		f.thinPoolName,
 		f.thinPoolWatcher,
 		f.zfsWatcher,
+		f.options,
 	)
 	return
 }
@@ -297,16 +300,13 @@ func ensureThinLsKernelVersion(kernelVersion string) error {
 }
 
 // Register root container before running this function!
-func Register(options Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
-	// TODO(rfratto): use options instead of globals.
-	_ = options
-
-	client, err := Client()
+func Register(opts Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	client, err := opts.Client()
 	if err != nil {
 		return nil, fmt.Errorf("unable to communicate with docker daemon: %v", err)
 	}
 
-	dockerInfo, err := ValidateInfo(Info, VersionString)
+	dockerInfo, err := ValidateInfo(opts.Info, opts.VersionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate Docker info: %v", err)
 	}
@@ -314,7 +314,7 @@ func Register(options Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo
 	// Version already validated above, assume no error here.
 	dockerVersion, _ := ParseVersion(dockerInfo.ServerVersion, VersionRe, 3)
 
-	dockerAPIVersion, _ := APIVersion()
+	dockerAPIVersion, _ := opts.APIVersion()
 
 	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems(includedMetrics)
 	if err != nil {
@@ -334,7 +334,7 @@ func Register(options Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo
 			}
 
 			// Safe to ignore error - driver status should always be populated.
-			status, _ := StatusFromDockerInfo(*dockerInfo)
+			status, _ := opts.StatusFromDockerInfo(*dockerInfo)
 			thinPoolName = status.DriverStatus[dockerutil.DriverStatusPoolName]
 		}
 
@@ -355,11 +355,12 @@ func Register(options Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo
 		fsInfo:             fsInfo,
 		machineInfoFactory: factory,
 		storageDriver:      StorageDriver(dockerInfo.Driver),
-		storageDir:         RootDir(),
+		storageDir:         opts.RootDir(),
 		includedMetrics:    includedMetrics,
 		thinPoolName:       thinPoolName,
 		thinPoolWatcher:    thinPoolWatcher,
 		zfsWatcher:         zfsWatcher,
+		options:            opts,
 	}
 
 	return container.Factories{
