@@ -27,19 +27,6 @@ import (
 
 const dockerClientTimeout = 10 * time.Second
 
-// NewPlugin returns an implementation of container.Plugin suitable for passing to container.RegisterPlugin()
-func NewPlugin() container.Plugin {
-	return &plugin{
-		options: Options{
-			DockerEndpoint: *ArgDockerEndpoint,
-			DockerTLS:      *ArgDockerTLS,
-			DockerCert:     *ArgDockerCert,
-			DockerKey:      *ArgDockerKey,
-			DockerCA:       *ArgDockerCA,
-		},
-	}
-}
-
 func NewPluginWithOptions(o Options) container.Plugin {
 	return &plugin{options: o}
 }

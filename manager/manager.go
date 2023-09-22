@@ -294,8 +294,7 @@ func (m *manager) PodmanContainer(containerName string, query *info.ContainerInf
 
 // Start the container manager.
 func (m *manager) Start() error {
-	// TODO(rfratto): replace with using m.plugins.
-	m.containerFactories = container.InitializePlugins(m, m.fsInfo, m.includedMetrics)
+	m.containerFactories = container.InitializePlugins(m, m.plugins, m.fsInfo, m.includedMetrics)
 
 	err := raw.Register(m, m.fsInfo, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
 	if err != nil {

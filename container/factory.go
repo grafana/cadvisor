@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/google/cadvisor/fs"
 	info "github.com/google/cadvisor/info/v1"
@@ -172,9 +171,7 @@ func (ms MetricSet) Append(ms1 MetricSet) MetricSet {
 	return result
 }
 
-// All registered auth provider plugins.
-var pluginsLock sync.Mutex
-var plugins = make(map[string]Plugin)
+type plugins map[string]Plugin
 
 type Plugin interface {
 	// InitializeFSContext is invoked when populating an fs.Context object for a new manager.
@@ -186,23 +183,7 @@ type Plugin interface {
 	Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics MetricSet) (Factories, error)
 }
 
-func RegisterPlugin(name string, plugin Plugin) error {
-	// TODO(rfratto): remove once plugins are passed directly to the manager.
-
-	pluginsLock.Lock()
-	defer pluginsLock.Unlock()
-	if _, found := plugins[name]; found {
-		return fmt.Errorf("Plugin %q was registered twice", name)
-	}
-	klog.V(4).Infof("Registered Plugin %q", name)
-	plugins[name] = plugin
-	return nil
-}
-
-func InitializePlugins(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics MetricSet) Factories {
-	pluginsLock.Lock()
-	defer pluginsLock.Unlock()
-
+func InitializePlugins(factory info.MachineInfoFactory, plugins plugins, fsInfo fs.FsInfo, includedMetrics MetricSet) Factories {
 	allFactories := make(Factories)
 
 	for name, plugin := range plugins {
