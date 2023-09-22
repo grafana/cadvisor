@@ -67,6 +67,8 @@ var (
 	disableThinLs = true
 )
 
+// TODO(@tpaschalis) This is also used by container/podman.
+// Make the above _not_ use package-level variables.
 func (opts Options) RootDir() string {
 	dockerRootDirOnce.Do(func() {
 		for i := 0; i < rootDirRetries; i++ {
