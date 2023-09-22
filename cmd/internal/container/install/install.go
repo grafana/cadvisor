@@ -23,5 +23,5 @@ import (
 
 	//_ "github.com/google/cadvisor/container/docker/install"
 	_ "github.com/google/cadvisor/container/podman/install"
-	_ "github.com/google/cadvisor/container/systemd/install"
+	// _ "github.com/google/cadvisor/container/systemd/install"
 )
