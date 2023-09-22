@@ -173,7 +173,7 @@ func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache,
 	context := fs.Context{}
 
 	for name, plugin := range plugins {
-		if plugin.InitializeFSContext(&context); err != nil {
+		if err := plugin.InitializeFSContext(&context); err != nil {
 			klog.V(5).Infof("Initialization of the %s context failed: %v", name, err)
 			return nil, err
 		}
