@@ -25,7 +25,6 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/pkg/errors"
 
-	"github.com/google/cadvisor/container/docker"
 	"github.com/google/cadvisor/container/docker/utils"
 	v1 "github.com/google/cadvisor/info/v1"
 )
@@ -100,13 +99,13 @@ func Images() ([]v1.DockerImage, error) {
 	return utils.SummariesToImages(summaries)
 }
 
-func Status() (v1.DockerStatus, error) {
+func (p *plugin) Status() (v1.DockerStatus, error) {
 	podmanInfo, err := GetInfo()
 	if err != nil {
 		return v1.DockerStatus{}, err
 	}
 
-	return docker.StatusFromDockerInfo(*podmanInfo)
+	return p.options.StatusFromDockerInfo(*podmanInfo)
 }
 
 func GetInfo() (*dockertypes.Info, error) {

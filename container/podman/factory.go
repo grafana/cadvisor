@@ -18,7 +18,6 @@ import (
 	"flag"
 	"fmt"
 	"path"
-	"sync"
 	"time"
 
 	"github.com/google/cadvisor/container"
@@ -36,29 +35,8 @@ const (
 	containerBaseName  = "container"
 )
 
-var (
-	endpointFlag = flag.String("podman", "unix:///var/run/podman/podman.sock", "podman endpoint")
-)
-
-var (
-	rootDir     string
-	rootDirOnce sync.Once
-)
-
-func RootDir() string {
-	rootDirOnce.Do(func() {
-		for i := 0; i < rootDirRetries; i++ {
-			status, err := Status()
-			if err == nil && status.RootDir != "" {
-				rootDir = status.RootDir
-				break
-			} else {
-				time.Sleep(rootDirRetryPeriod)
-			}
-		}
-	})
-	return rootDir
-}
+// TODO(@tpaschalis) Add this as an option so it's not a globally-defined flag.
+var endpointFlag = flag.String("podman", "unix:///var/run/podman/podman.sock", "podman endpoint")
 
 type podmanFactory struct {
 	// Information about the mounted cgroup subsystems.
@@ -77,6 +55,8 @@ type podmanFactory struct {
 	thinPoolWatcher *devicemapper.ThinPoolWatcher
 
 	zfsWatcher *zfs.ZfsWatcher
+
+	dockerOptions docker.Options
 }
 
 func (f *podmanFactory) CanHandleAndAccept(name string) (handle bool, accept bool, err error) {
@@ -109,5 +89,5 @@ func (f *podmanFactory) String() string {
 func (f *podmanFactory) NewContainerHandler(name string, metadataEnvAllowList []string, inHostNamespace bool) (handler container.ContainerHandler, err error) {
 	return newPodmanContainerHandler(name, f.machineInfoFactory, f.fsInfo,
 		f.storageDriver, f.storageDir, f.cgroupSubsystem, inHostNamespace,
-		metadataEnvAllowList, f.metrics, f.thinPoolName, f.thinPoolWatcher, f.zfsWatcher)
+		metadataEnvAllowList, f.metrics, f.thinPoolName, f.thinPoolWatcher, f.zfsWatcher, f.dockerOptions)
 }

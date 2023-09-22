@@ -85,6 +85,7 @@ func newPodmanContainerHandler(
 	thinPoolName string,
 	thinPoolWatcher *devicemapper.ThinPoolWatcher,
 	zfsWatcher *zfs.ZfsWatcher,
+	opts docker.Options,
 ) (container.ContainerHandler, error) {
 	// Create the cgroup paths.
 	cgroupPaths := common.MakeCgroupPaths(cgroupSubsystems, name)
@@ -118,7 +119,7 @@ func newPodmanContainerHandler(
 		return nil, err
 	}
 
-	rootfsStorageDir, zfsParent, zfsFilesystem, err := determineDeviceStorage(storageDriver, storageDir, rwLayerID)
+	rootfsStorageDir, zfsParent, zfsFilesystem, err := determineDeviceStorage(opts, storageDriver, storageDir, rwLayerID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +201,7 @@ func newPodmanContainerHandler(
 	return handler, nil
 }
 
-func determineDeviceStorage(storageDriver docker.StorageDriver, storageDir string, rwLayerID string) (
+func determineDeviceStorage(opts docker.Options, storageDriver docker.StorageDriver, storageDir string, rwLayerID string) (
 	rootfsStorageDir string, zfsFilesystem string, zfsParent string, err error) {
 	switch storageDriver {
 	// Podman aliased the driver names together.
@@ -208,7 +209,7 @@ func determineDeviceStorage(storageDriver docker.StorageDriver, storageDir strin
 		rootfsStorageDir = path.Join(storageDir, "overlay", rwLayerID, "diff")
 		return
 	default:
-		return docker.DetermineDeviceStorage(storageDriver, storageDir, rwLayerID)
+		return docker.DetermineDeviceStorage(opts, storageDriver, storageDir, rwLayerID)
 	}
 }
 

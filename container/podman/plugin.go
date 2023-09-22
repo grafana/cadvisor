@@ -31,11 +31,13 @@ import (
 	"github.com/google/cadvisor/zfs"
 )
 
-func NewPlugin() container.Plugin {
-	return &plugin{}
+type plugin struct {
+	options docker.Options
 }
 
-type plugin struct{}
+func NewPluginWithOptions(o docker.Options) container.Plugin {
+	return &plugin{options: o}
+}
 
 func (p *plugin) InitializeFSContext(context *fs.Context) error {
 	context.Podman = fs.PodmanContext{
@@ -47,11 +49,11 @@ func (p *plugin) InitializeFSContext(context *fs.Context) error {
 	return nil
 }
 
-func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (watcher.ContainerWatcher, error) {
-	return Register(factory, fsInfo, includedMetrics)
+func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	return Register(p.options, factory, fsInfo, includedMetrics)
 }
 
-func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, metrics container.MetricSet) (watcher.ContainerWatcher, error) {
+func Register(opts docker.Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, metrics container.MetricSet) (container.Factories, error) {
 	cgroupSubsystem, err := libcontainer.GetCgroupSubsystems(metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cgroup subsystems: %v", err)
@@ -75,7 +77,7 @@ func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, metrics contain
 				klog.Errorf("devicemapper filesystem stats will not be reported: %v", err)
 			}
 
-			status, _ := docker.StatusFromDockerInfo(*validatedInfo)
+			status, _ := opts.StatusFromDockerInfo(*validatedInfo)
 			thinPoolName = status.DriverStatus[dockerutil.DriverStatusPoolName]
 		case docker.ZfsStorageDriver:
 			zfsWatcher, err = docker.StartZfsWatcher(validatedInfo)
@@ -90,20 +92,21 @@ func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, metrics contain
 	f := &podmanFactory{
 		machineInfoFactory: factory,
 		storageDriver:      docker.StorageDriver(validatedInfo.Driver),
-		storageDir:         RootDir(),
+		storageDir:         opts.RootDir(),
 		cgroupSubsystem:    cgroupSubsystem,
 		fsInfo:             fsInfo,
 		metrics:            metrics,
 		thinPoolName:       thinPoolName,
 		thinPoolWatcher:    thinPoolWatcher,
 		zfsWatcher:         zfsWatcher,
+		dockerOptions:      opts,
 	}
-
-	container.RegisterContainerHandlerFactory(f, []watcher.ContainerWatchSource{watcher.Raw})
 
 	if !cgroups.IsCgroup2UnifiedMode() {
 		klog.Warning("Podman rootless containers not working with cgroups v1!")
 	}
 
-	return nil, nil
+	return container.Factories{
+		watcher.Raw: []container.ContainerHandlerFactory{f},
+	}, nil
 }
