@@ -32,15 +32,15 @@ var (
 )
 
 // Client creates a Docker API client based on the given Docker flags
-func Client() (*dclient.Client, error) {
+func (opts Options) Client() (*dclient.Client, error) {
 	dockerClientOnce.Do(func() {
 		var client *http.Client
-		if *ArgDockerTLS {
+		if opts.DockerTLS {
 			client = &http.Client{}
 			options := tlsconfig.Options{
-				CAFile:             *ArgDockerCA,
-				CertFile:           *ArgDockerCert,
-				KeyFile:            *ArgDockerKey,
+				CAFile:             opts.DockerCA,
+				CertFile:           opts.DockerCert,
+				KeyFile:            opts.DockerKey,
 				InsecureSkipVerify: false,
 			}
 			tlsc, err := tlsconfig.Client(options)
@@ -53,7 +53,7 @@ func Client() (*dclient.Client, error) {
 			}
 		}
 		dockerClient, dockerClientErr = dclient.NewClientWithOpts(
-			dclient.WithHost(*ArgDockerEndpoint),
+			dclient.WithHost(opts.DockerEndpoint),
 			dclient.WithHTTPClient(client),
 			dclient.WithAPIVersionNegotiation())
 	})
