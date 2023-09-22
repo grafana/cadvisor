@@ -39,7 +39,8 @@ import (
 	// as these are moved to cmd/internal/container, remove them from here.
 	_ "github.com/google/cadvisor/container/containerd/install"
 	_ "github.com/google/cadvisor/container/crio/install"
-	_ "github.com/google/cadvisor/container/docker/install"
+
+	//_ "github.com/google/cadvisor/container/docker/install"
 	_ "github.com/google/cadvisor/container/systemd/install"
 )
 
