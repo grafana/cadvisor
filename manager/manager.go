@@ -296,9 +296,14 @@ func (m *manager) PodmanContainer(containerName string, query *info.ContainerInf
 func (m *manager) Start() error {
 	m.containerFactories = container.InitializePlugins(m, m.plugins, m.fsInfo, m.includedMetrics)
 
-	err := raw.Register(m, m.fsInfo, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
+	rawFactories, err := raw.Register(m, m.fsInfo, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
 	if err != nil {
 		klog.Errorf("Registration of the raw container factory failed: %v", err)
+	}
+
+	// TODO(@tpaschalis) Do we need anything else to handle rawFactories?
+	for watchType, list := range rawFactories {
+		m.containerFactories[watchType] = append(m.containerFactories[watchType], list...)
 	}
 
 	rawWatcher, err := raw.NewRawContainerWatcher(m.includedMetrics)

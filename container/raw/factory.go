@@ -24,7 +24,7 @@ import (
 	"github.com/google/cadvisor/container/libcontainer"
 	"github.com/google/cadvisor/fs"
 	info "github.com/google/cadvisor/info/v1"
-	watch "github.com/google/cadvisor/watcher"
+	"github.com/google/cadvisor/watcher"
 
 	"k8s.io/klog/v2"
 )
@@ -86,18 +86,18 @@ func (f *rawFactory) DebugInfo() map[string][]string {
 	return common.DebugInfo(f.watcher.GetWatches())
 }
 
-func Register(machineInfoFactory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics map[container.MetricKind]struct{}, rawPrefixWhiteList []string) error {
+func Register(machineInfoFactory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics map[container.MetricKind]struct{}, rawPrefixWhiteList []string) (container.Factories, error) {
 	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems(includedMetrics)
 	if err != nil {
-		return fmt.Errorf("failed to get cgroup subsystems: %v", err)
+		return nil, fmt.Errorf("failed to get cgroup subsystems: %v", err)
 	}
 	if len(cgroupSubsystems) == 0 {
-		return fmt.Errorf("failed to find supported cgroup mounts for the raw factory")
+		return nil, fmt.Errorf("failed to find supported cgroup mounts for the raw factory")
 	}
 
-	watcher, err := common.NewInotifyWatcher()
+	inotifyWatcher, err := common.NewInotifyWatcher()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	klog.V(1).Infof("Registering Raw factory")
@@ -105,10 +105,11 @@ func Register(machineInfoFactory info.MachineInfoFactory, fsInfo fs.FsInfo, incl
 		machineInfoFactory: machineInfoFactory,
 		fsInfo:             fsInfo,
 		cgroupSubsystems:   cgroupSubsystems,
-		watcher:            watcher,
+		watcher:            inotifyWatcher,
 		includedMetrics:    includedMetrics,
 		rawPrefixWhiteList: rawPrefixWhiteList,
 	}
-	container.RegisterContainerHandlerFactory(factory, []watch.ContainerWatchSource{watch.Raw})
-	return nil
+	return container.Factories{
+		watcher.Raw: []container.ContainerHandlerFactory{factory},
+	}, nil
 }
