@@ -153,7 +153,7 @@ type HouskeepingConfig = struct {
 }
 
 // New takes a memory storage and returns a new manager.
-func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, houskeepingConfig HouskeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration) (Manager, error) {
+func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, houskeepingConfig HouskeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration, rawOptions raw.Options) (Manager, error) {
 	if memoryCache == nil {
 		return nil, fmt.Errorf("manager requires memory storage")
 	}
@@ -212,6 +212,7 @@ func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache,
 		collectorHTTPClient:                   collectorHTTPClient,
 		rawContainerCgroupPathPrefixWhiteList: rawContainerCgroupPathPrefixWhiteList,
 		containerEnvMetadataWhiteList:         containerEnvMetadataWhiteList,
+		rawOptions:                            rawOptions,
 	}
 
 	machineInfo, err := machine.Info(sysfs, fsInfo, inHostNamespace)
@@ -226,7 +227,7 @@ func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache,
 		return nil, err
 	}
 
-	newManager.resctrlManager, err = resctrl.NewManager(resctrlInterval, resctrl.Setup, machineInfo.CPUVendorID, inHostNamespace)
+	newManager.resctrlManager, err = resctrl.NewManager(resctrlInterval, resctrl.Setup, machineInfo.CPUVendorID, inHostNamespace, rawOptions.DockerOnly)
 	if err != nil {
 		klog.V(4).Infof("Cannot gather resctrl metrics: %v", err)
 	}
@@ -277,6 +278,7 @@ type manager struct {
 	rawContainerCgroupPathPrefixWhiteList []string
 	// List of container env prefix whitelist, the matched container envs would be collected into metrics as extra labels.
 	containerEnvMetadataWhiteList []string
+	rawOptions                    raw.Options
 }
 
 func (m *manager) PodmanContainer(containerName string, query *info.ContainerInfoRequest) (info.ContainerInfo, error) {
@@ -296,12 +298,12 @@ func (m *manager) PodmanContainer(containerName string, query *info.ContainerInf
 func (m *manager) Start() error {
 	m.containerFactories = container.InitializePlugins(m, m.plugins, m.fsInfo, m.includedMetrics)
 
-	rawFactories, err := raw.Register(m, m.fsInfo, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
+	rawFactories, err := raw.Register(m, m.fsInfo, m.rawOptions, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
 	if err != nil {
 		klog.Errorf("Registration of the raw container factory failed: %v", err)
 	}
 
-	// TODO(@tpaschalis) Do we need anything else to handle rawFactories?
+	// TODO(@tpaschalis) Do we need anything else to handle rawFactories other than passing the rawOptions above?
 	for watchType, list := range rawFactories {
 		m.containerFactories[watchType] = append(m.containerFactories[watchType], list...)
 	}

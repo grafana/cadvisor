@@ -32,6 +32,7 @@ import (
 	"github.com/google/cadvisor/container/crio"
 	"github.com/google/cadvisor/container/docker"
 	"github.com/google/cadvisor/container/podman"
+	"github.com/google/cadvisor/container/raw"
 	"github.com/google/cadvisor/container/systemd"
 	"github.com/google/cadvisor/manager"
 	"github.com/google/cadvisor/metrics"
@@ -91,6 +92,9 @@ var (
 	// containerd arguments
 	ArgContainerdEndpoint  = flag.String("containerd", "/run/containerd/containerd.sock", "containerd endpoint")
 	ArgContainerdNamespace = flag.String("containerd-namespace", "k8s.io", "containerd namespace")
+
+	// raw arguments
+	DockerOnly = flag.Bool("docker_only", false, "Only report docker containers in addition to root stats")
 )
 
 var (
@@ -168,7 +172,7 @@ func main() {
 
 	collectorHTTPClient := createCollectorHTTPClient(*collectorCert, *collectorKey)
 
-	resourceManager, err := manager.New(plugins, memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, &collectorHTTPClient, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval)
+	resourceManager, err := manager.New(plugins, memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, &collectorHTTPClient, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval, raw.Options{DockerOnly: *DockerOnly})
 	if err != nil {
 		klog.Fatalf("Failed to create a manager: %s", err)
 	}

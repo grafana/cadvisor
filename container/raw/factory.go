@@ -30,7 +30,6 @@ import (
 )
 
 var (
-	DockerOnly             = flag.Bool("docker_only", false, "Only report docker containers in addition to root stats")
 	disableRootCgroupStats = flag.Bool("disable_root_cgroup_stats", false, "Disable collecting root Cgroup stats")
 )
 
@@ -52,6 +51,12 @@ type rawFactory struct {
 
 	// List of raw container cgroup path prefix whitelist.
 	rawPrefixWhiteList []string
+
+	options Options
+}
+
+type Options struct {
+	DockerOnly bool
 }
 
 func (f *rawFactory) String() string {
@@ -71,7 +76,7 @@ func (f *rawFactory) CanHandleAndAccept(name string) (bool, bool, error) {
 	if name == "/" {
 		return true, true, nil
 	}
-	if *DockerOnly && f.rawPrefixWhiteList[0] == "" {
+	if f.options.DockerOnly && f.rawPrefixWhiteList[0] == "" {
 		return true, false, nil
 	}
 	for _, prefix := range f.rawPrefixWhiteList {
@@ -86,7 +91,7 @@ func (f *rawFactory) DebugInfo() map[string][]string {
 	return common.DebugInfo(f.watcher.GetWatches())
 }
 
-func Register(machineInfoFactory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics map[container.MetricKind]struct{}, rawPrefixWhiteList []string) (container.Factories, error) {
+func Register(machineInfoFactory info.MachineInfoFactory, fsInfo fs.FsInfo, options Options, includedMetrics map[container.MetricKind]struct{}, rawPrefixWhiteList []string) (container.Factories, error) {
 	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems(includedMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cgroup subsystems: %v", err)
@@ -108,6 +113,7 @@ func Register(machineInfoFactory info.MachineInfoFactory, fsInfo fs.FsInfo, incl
 		watcher:            inotifyWatcher,
 		includedMetrics:    includedMetrics,
 		rawPrefixWhiteList: rawPrefixWhiteList,
+		options:            options,
 	}
 	return container.Factories{
 		watcher.Raw: []container.ContainerHandlerFactory{factory},
