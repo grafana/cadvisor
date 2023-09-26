@@ -150,7 +150,7 @@ func main() {
 	setMaxProcs()
 
 	plugins := map[string]container.Plugin{
-		"containerd": containerd.NewPluginWithOptions(containerd.Options{ // TODO(@spartan0x117): Make containerdEnvMetadataWhiteList non-global and add to these options
+		"containerd": containerd.NewPluginWithOptions(&containerd.Options{ // TODO(@spartan0x117): Make containerdEnvMetadataWhiteList non-global and add to these options
 			ContainerdEndpoint:  *ArgContainerdEndpoint,
 			ContainerdNamespace: *ArgContainerdNamespace,
 		}),

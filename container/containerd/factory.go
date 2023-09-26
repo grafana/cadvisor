@@ -49,7 +49,7 @@ type containerdFactory struct {
 	// Information about mounted filesystems.
 	fsInfo          fs.FsInfo
 	includedMetrics container.MetricSet
-	options         Options
+	options         *Options
 }
 
 func (f *containerdFactory) String() string {
@@ -58,7 +58,7 @@ func (f *containerdFactory) String() string {
 
 func (f *containerdFactory) NewContainerHandler(name string, metadataEnvAllowList []string, inHostNamespace bool) (handler container.ContainerHandler, err error) {
 	// TODO(@tpaschalis) Do we need to re-create a client here? Can't we use f.client directly?
-	client, err := Client(f.options.ContainerdEndpoint, f.options.ContainerdNamespace)
+	client, err := f.options.Client(f.options.ContainerdEndpoint, f.options.ContainerdNamespace)
 	if err != nil {
 		return
 	}
@@ -125,8 +125,8 @@ func (f *containerdFactory) DebugInfo() map[string][]string {
 }
 
 // Register root container before running this function!
-func Register(opts Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
-	client, err := Client(opts.ContainerdEndpoint, opts.ContainerdNamespace)
+func Register(opts *Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	client, err := opts.Client(opts.ContainerdEndpoint, opts.ContainerdNamespace)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create containerd client: %v", err)
 	}

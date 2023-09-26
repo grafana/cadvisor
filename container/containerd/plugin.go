@@ -15,22 +15,28 @@
 package containerd
 
 import (
+	"sync"
+
 	"github.com/google/cadvisor/container"
 	"github.com/google/cadvisor/fs"
 	info "github.com/google/cadvisor/info/v1"
 )
 
-func NewPluginWithOptions(o Options) container.Plugin {
+func NewPluginWithOptions(o *Options) container.Plugin {
 	return &plugin{options: o}
 }
 
 type plugin struct {
-	options Options
+	options *Options
 }
 
 type Options struct {
 	ContainerdEndpoint  string
 	ContainerdNamespace string
+
+	once          sync.Once
+	ctrdClient    ContainerdClient
+	ctrdClientErr error
 }
 
 func (p *plugin) InitializeFSContext(context *fs.Context) error {
