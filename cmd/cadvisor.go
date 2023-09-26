@@ -151,16 +151,16 @@ func main() {
 			ContainerdEndpoint:  *ArgContainerdEndpoint,
 			ContainerdNamespace: *ArgContainerdNamespace,
 		}),
-		"docker": docker.NewPluginWithOptions(docker.Options{
+		"docker": docker.NewPluginWithOptions(&docker.Options{
 			DockerEndpoint: *ArgDockerEndpoint,
 			DockerTLS:      *ArgDockerTLS,
 			DockerCert:     *ArgDockerCert,
 			DockerKey:      *ArgDockerKey,
 			DockerCA:       *ArgDockerCA,
 		}),
-		"crio":    crio.NewPlugin(),                              // TODO(@spartan0x117): Add options
-		"podman":  podman.NewPluginWithOptions(docker.Options{}), // TODO(@spartan0x117): Add correct options. podman endpoint?
-		"systemd": systemd.NewPlugin(),                           // TODO(@spartan0x117): Add options.
+		"crio":    crio.NewPlugin(),                               // TODO(@spartan0x117): Add options
+		"podman":  podman.NewPluginWithOptions(&docker.Options{}), // TODO(@spartan0x117): Add correct options. podman endpoint?
+		"systemd": systemd.NewPlugin(),                            // TODO(@spartan0x117): Add options.
 	}
 
 	memoryStorage, err := NewMemoryStorage()

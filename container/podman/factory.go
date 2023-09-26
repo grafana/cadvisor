@@ -56,7 +56,7 @@ type podmanFactory struct {
 
 	zfsWatcher *zfs.ZfsWatcher
 
-	dockerOptions docker.Options
+	dockerOptions *docker.Options
 }
 
 func (f *podmanFactory) CanHandleAndAccept(name string) (handle bool, accept bool, err error) {

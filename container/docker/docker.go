@@ -40,11 +40,11 @@ func SetTimeout(timeout time.Duration) {
 	dockerTimeout = timeout
 }
 
-func (opts Options) Status() (v1.DockerStatus, error) {
+func (opts *Options) Status() (v1.DockerStatus, error) {
 	return opts.StatusWithContext(defaultContext())
 }
 
-func (opts Options) StatusWithContext(ctx context.Context) (v1.DockerStatus, error) {
+func (opts *Options) StatusWithContext(ctx context.Context) (v1.DockerStatus, error) {
 	client, err := opts.Client()
 	if err != nil {
 		return v1.DockerStatus{}, fmt.Errorf("unable to communicate with docker daemon: %v", err)
@@ -56,7 +56,7 @@ func (opts Options) StatusWithContext(ctx context.Context) (v1.DockerStatus, err
 	return opts.StatusFromDockerInfo(dockerInfo)
 }
 
-func (opts Options) StatusFromDockerInfo(dockerInfo dockertypes.Info) (v1.DockerStatus, error) {
+func (opts *Options) StatusFromDockerInfo(dockerInfo dockertypes.Info) (v1.DockerStatus, error) {
 	out := v1.DockerStatus{}
 	out.KernelVersion = machine.KernelVersion()
 	out.OS = dockerInfo.OperatingSystem
@@ -83,7 +83,7 @@ func (opts Options) StatusFromDockerInfo(dockerInfo dockertypes.Info) (v1.Docker
 	return out, nil
 }
 
-func (opts Options) Images() ([]v1.DockerImage, error) {
+func (opts *Options) Images() ([]v1.DockerImage, error) {
 	client, err := opts.Client()
 	if err != nil {
 		return nil, fmt.Errorf("unable to communicate with docker daemon: %v", err)
@@ -128,7 +128,7 @@ func ValidateInfo(GetInfo func() (*dockertypes.Info, error), ServerVersion func(
 	return info, nil
 }
 
-func (opts Options) Info() (*dockertypes.Info, error) {
+func (opts *Options) Info() (*dockertypes.Info, error) {
 	client, err := opts.Client()
 	if err != nil {
 		return nil, fmt.Errorf("unable to communicate with docker daemon: %v", err)
@@ -142,7 +142,7 @@ func (opts Options) Info() (*dockertypes.Info, error) {
 	return &dockerInfo, nil
 }
 
-func (opts Options) APIVersion() ([]int, error) {
+func (opts *Options) APIVersion() ([]int, error) {
 	ver, err := opts.APIVersionString()
 	if err != nil {
 		return nil, err
@@ -150,7 +150,7 @@ func (opts Options) APIVersion() ([]int, error) {
 	return ParseVersion(ver, apiVersionRe, 2)
 }
 
-func (opts Options) VersionString() (string, error) {
+func (opts *Options) VersionString() (string, error) {
 	dockerVersion := "Unknown"
 	client, err := opts.Client()
 	if err == nil {
@@ -162,7 +162,7 @@ func (opts Options) VersionString() (string, error) {
 	return dockerVersion, err
 }
 
-func (opts Options) APIVersionString() (string, error) {
+func (opts *Options) APIVersionString() (string, error) {
 	apiVersion := "Unknown"
 	client, err := opts.Client()
 	if err == nil {

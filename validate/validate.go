@@ -206,7 +206,7 @@ func validateCgroups() (string, string) {
 	return Recommended, out
 }
 
-func validateDockerInfo(opts docker.Options) (string, string) {
+func validateDockerInfo(opts *docker.Options) (string, string) {
 	info, err := docker.ValidateInfo(opts.Info, opts.VersionString)
 	if err != nil {
 		return Unsupported, fmt.Sprintf("Docker setup is invalid: %v", err)

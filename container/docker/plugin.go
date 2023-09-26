@@ -15,11 +15,13 @@
 package docker
 
 import (
+	"sync"
 	"time"
 
 	"golang.org/x/net/context"
 	"k8s.io/klog/v2"
 
+	dclient "github.com/docker/docker/client"
 	"github.com/google/cadvisor/container"
 	"github.com/google/cadvisor/fs"
 	info "github.com/google/cadvisor/info/v1"
@@ -27,7 +29,7 @@ import (
 
 const dockerClientTimeout = 10 * time.Second
 
-func NewPluginWithOptions(o Options) container.Plugin {
+func NewPluginWithOptions(o *Options) container.Plugin {
 	return &plugin{options: o}
 }
 
@@ -37,10 +39,17 @@ type Options struct {
 	DockerCert     string
 	DockerKey      string
 	DockerCA       string
+
+	dockerClientOnce sync.Once
+	dockerClient     *dclient.Client
+	dockerClientErr  error
+
+	dockerRootDirOnce sync.Once
+	dockerRootDir     string
 }
 
-func DefaultOptions() Options {
-	return Options{
+func DefaultOptions() *Options {
+	return &Options{
 		DockerEndpoint: "unix:///var/run/docker.sock",
 		DockerTLS:      false,
 		DockerCert:     "cert.pem",
@@ -50,7 +59,7 @@ func DefaultOptions() Options {
 }
 
 type plugin struct {
-	options Options
+	options *Options
 }
 
 func (p *plugin) InitializeFSContext(context *fs.Context) error {

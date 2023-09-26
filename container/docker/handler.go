@@ -125,7 +125,7 @@ func newDockerContainerHandler(
 	thinPoolName string,
 	thinPoolWatcher *devicemapper.ThinPoolWatcher,
 	zfsWatcher *zfs.ZfsWatcher,
-	opts Options,
+	opts *Options,
 ) (container.ContainerHandler, error) {
 	// Create the cgroup paths.
 	cgroupPaths := common.MakeCgroupPaths(cgroupSubsystems, name)
@@ -249,7 +249,7 @@ func newDockerContainerHandler(
 	return handler, nil
 }
 
-func DetermineDeviceStorage(opts Options, storageDriver StorageDriver, storageDir string, rwLayerID string) (
+func DetermineDeviceStorage(opts *Options, storageDriver StorageDriver, storageDir string, rwLayerID string) (
 	rootfsStorageDir string, zfsFilesystem string, zfsParent string, err error) {
 	switch storageDriver {
 	case AufsStorageDriver:

@@ -32,10 +32,10 @@ import (
 )
 
 type plugin struct {
-	options docker.Options
+	options *docker.Options
 }
 
-func NewPluginWithOptions(o docker.Options) container.Plugin {
+func NewPluginWithOptions(o *docker.Options) container.Plugin {
 	return &plugin{options: o}
 }
 
@@ -53,7 +53,7 @@ func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, inc
 	return Register(p.options, factory, fsInfo, includedMetrics)
 }
 
-func Register(opts docker.Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, metrics container.MetricSet) (container.Factories, error) {
+func Register(opts *docker.Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, metrics container.MetricSet) (container.Factories, error) {
 	cgroupSubsystem, err := libcontainer.GetCgroupSubsystems(metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cgroup subsystems: %v", err)

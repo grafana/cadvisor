@@ -19,21 +19,14 @@ package docker
 
 import (
 	"net/http"
-	"sync"
 
 	dclient "github.com/docker/docker/client"
 	"github.com/docker/go-connections/tlsconfig"
 )
 
-var (
-	dockerClient     *dclient.Client
-	dockerClientErr  error
-	dockerClientOnce sync.Once
-)
-
 // Client creates a Docker API client based on the given Docker flags
-func (opts Options) Client() (*dclient.Client, error) {
-	dockerClientOnce.Do(func() {
+func (opts *Options) Client() (*dclient.Client, error) {
+	opts.dockerClientOnce.Do(func() {
 		var client *http.Client
 		if opts.DockerTLS {
 			client = &http.Client{}
@@ -45,17 +38,17 @@ func (opts Options) Client() (*dclient.Client, error) {
 			}
 			tlsc, err := tlsconfig.Client(options)
 			if err != nil {
-				dockerClientErr = err
+				opts.dockerClientErr = err
 				return
 			}
 			client.Transport = &http.Transport{
 				TLSClientConfig: tlsc,
 			}
 		}
-		dockerClient, dockerClientErr = dclient.NewClientWithOpts(
+		opts.dockerClient, opts.dockerClientErr = dclient.NewClientWithOpts(
 			dclient.WithHost(opts.DockerEndpoint),
 			dclient.WithHTTPClient(client),
 			dclient.WithAPIVersionNegotiation())
 	})
-	return dockerClient, dockerClientErr
+	return opts.dockerClient, opts.dockerClientErr
 }

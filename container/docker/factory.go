@@ -20,7 +20,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/blang/semver/v4"
@@ -53,12 +52,7 @@ const rootDirRetries = 5
 const rootDirRetryPeriod time.Duration = 1000 * time.Millisecond
 
 var (
-	// Basepath to all container specific information that libcontainer stores.
-	dockerRootDir string
-
 	dockerRootDirFlag = flag.String("docker_root", "/var/lib/docker", "DEPRECATED: docker root is read from docker info (this is a fallback, default: /var/lib/docker)")
-
-	dockerRootDirOnce sync.Once
 
 	// flag that controls globally disabling thin_ls pending future enhancements.
 	// in production, it has been found that thin_ls makes excessive use of iops.
@@ -69,22 +63,22 @@ var (
 
 // TODO(@tpaschalis) This is also used by container/podman.
 // Make the above _not_ use package-level variables.
-func (opts Options) RootDir() string {
-	dockerRootDirOnce.Do(func() {
+func (opts *Options) RootDir() string {
+	opts.dockerRootDirOnce.Do(func() {
 		for i := 0; i < rootDirRetries; i++ {
 			status, err := opts.Status()
 			if err == nil && status.RootDir != "" {
-				dockerRootDir = status.RootDir
+				opts.dockerRootDir = status.RootDir
 				break
 			} else {
 				time.Sleep(rootDirRetryPeriod)
 			}
 		}
-		if dockerRootDir == "" {
-			dockerRootDir = *dockerRootDirFlag
+		if opts.dockerRootDir == "" {
+			opts.dockerRootDir = *dockerRootDirFlag
 		}
 	})
-	return dockerRootDir
+	return opts.dockerRootDir
 }
 
 type StorageDriver string
@@ -123,7 +117,7 @@ type dockerFactory struct {
 
 	zfsWatcher *zfs.ZfsWatcher
 
-	options Options
+	options *Options
 }
 
 func (f *dockerFactory) String() string {
@@ -302,7 +296,7 @@ func ensureThinLsKernelVersion(kernelVersion string) error {
 }
 
 // Register root container before running this function!
-func Register(opts Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+func Register(opts *Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
 	client, err := opts.Client()
 	if err != nil {
 		return nil, fmt.Errorf("unable to communicate with docker daemon: %v", err)
