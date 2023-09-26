@@ -93,6 +93,9 @@ var (
 	ArgContainerdEndpoint  = flag.String("containerd", "/run/containerd/containerd.sock", "containerd endpoint")
 	ArgContainerdNamespace = flag.String("containerd-namespace", "k8s.io", "containerd namespace")
 
+	// podman argument
+	ArgPodmanEndpoint = flag.String("podman", "unix:///var/run/podman/podman.sock", "podman endpoint")
+
 	// raw arguments
 	DockerOnly = flag.Bool("docker_only", false, "Only report docker containers in addition to root stats")
 )
@@ -158,9 +161,17 @@ func main() {
 			DockerKey:      *ArgDockerKey,
 			DockerCA:       *ArgDockerCA,
 		}),
-		"crio":    crio.NewPlugin(),                               // TODO(@spartan0x117): Add options
-		"podman":  podman.NewPluginWithOptions(&docker.Options{}), // TODO(@spartan0x117): Add correct options. podman endpoint?
-		"systemd": systemd.NewPlugin(),                            // TODO(@spartan0x117): Add options.
+		"crio": crio.NewPlugin(), // TODO(@spartan0x117): Add options
+		"podman": podman.NewPluginWithOptions(
+			*ArgPodmanEndpoint,
+			&docker.Options{
+				DockerEndpoint: *ArgDockerEndpoint,
+				DockerTLS:      *ArgDockerTLS,
+				DockerCert:     *ArgDockerCert,
+				DockerKey:      *ArgDockerKey,
+				DockerCA:       *ArgDockerCA,
+			}),
+		"systemd": systemd.NewPlugin(), // TODO(@spartan0x117): Add options.
 	}
 
 	memoryStorage, err := NewMemoryStorage()

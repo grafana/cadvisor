@@ -32,11 +32,11 @@ import (
 )
 
 type plugin struct {
-	options *docker.Options
+	options *Options
 }
 
-func NewPluginWithOptions(o *docker.Options) container.Plugin {
-	return &plugin{options: o}
+func NewPluginWithOptions(e string, do *docker.Options) container.Plugin {
+	return &plugin{options: &Options{podmanEndpoint: e, dockerOptions: do}}
 }
 
 func (p *plugin) InitializeFSContext(context *fs.Context) error {
@@ -53,13 +53,13 @@ func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, inc
 	return Register(p.options, factory, fsInfo, includedMetrics)
 }
 
-func Register(opts *docker.Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, metrics container.MetricSet) (container.Factories, error) {
+func Register(opts *Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, metrics container.MetricSet) (container.Factories, error) {
 	cgroupSubsystem, err := libcontainer.GetCgroupSubsystems(metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cgroup subsystems: %v", err)
 	}
 
-	validatedInfo, err := docker.ValidateInfo(GetInfo, VersionString)
+	validatedInfo, err := docker.ValidateInfo(opts.GetInfo, opts.VersionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate Podman info: %v", err)
 	}
@@ -77,7 +77,7 @@ func Register(opts *docker.Options, factory info.MachineInfoFactory, fsInfo fs.F
 				klog.Errorf("devicemapper filesystem stats will not be reported: %v", err)
 			}
 
-			status, _ := opts.StatusFromDockerInfo(*validatedInfo)
+			status, _ := opts.dockerOptions.StatusFromDockerInfo(*validatedInfo)
 			thinPoolName = status.DriverStatus[dockerutil.DriverStatusPoolName]
 		case docker.ZfsStorageDriver:
 			zfsWatcher, err = docker.StartZfsWatcher(validatedInfo)
@@ -92,14 +92,14 @@ func Register(opts *docker.Options, factory info.MachineInfoFactory, fsInfo fs.F
 	f := &podmanFactory{
 		machineInfoFactory: factory,
 		storageDriver:      docker.StorageDriver(validatedInfo.Driver),
-		storageDir:         opts.RootDir(),
+		storageDir:         opts.dockerOptions.RootDir(),
 		cgroupSubsystem:    cgroupSubsystem,
 		fsInfo:             fsInfo,
 		metrics:            metrics,
 		thinPoolName:       thinPoolName,
 		thinPoolWatcher:    thinPoolWatcher,
 		zfsWatcher:         zfsWatcher,
-		dockerOptions:      opts,
+		podmanOptions:      opts,
 	}
 
 	if !cgroups.IsCgroup2UnifiedMode() {
