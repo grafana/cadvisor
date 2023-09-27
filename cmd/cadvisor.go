@@ -150,7 +150,7 @@ func main() {
 	setMaxProcs()
 
 	plugins := map[string]container.Plugin{
-		"containerd": containerd.NewPluginWithOptions(&containerd.Options{ // TODO(@spartan0x117): Make containerdEnvMetadataWhiteList non-global and add to these options
+		"containerd": containerd.NewPluginWithOptions(&containerd.Options{  options
 			ContainerdEndpoint:  *ArgContainerdEndpoint,
 			ContainerdNamespace: *ArgContainerdNamespace,
 		}),
@@ -161,7 +161,7 @@ func main() {
 			DockerKey:      *ArgDockerKey,
 			DockerCA:       *ArgDockerCA,
 		}),
-		"crio": crio.NewPlugin(), // TODO(@spartan0x117): Add options
+		"crio": crio.NewPlugin(),
 		"podman": podman.NewPluginWithOptions(
 			*ArgPodmanEndpoint,
 			&docker.Options{
@@ -171,7 +171,7 @@ func main() {
 				DockerKey:      *ArgDockerKey,
 				DockerCA:       *ArgDockerCA,
 			}),
-		"systemd": systemd.NewPlugin(), // TODO(@spartan0x117): Add options.
+		"systemd": systemd.NewPlugin(),
 	}
 
 	memoryStorage, err := NewMemoryStorage()
