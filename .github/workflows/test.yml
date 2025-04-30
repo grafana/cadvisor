@@ -1,7 +1,7 @@
 name: Test
 on: [push, pull_request]
 permissions:
-  content: read
+  contents: read
 jobs:
   test:
     strategy:
