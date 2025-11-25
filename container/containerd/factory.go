@@ -15,7 +15,6 @@
 package containerd
 
 import (
-	"flag"
 	"fmt"
 	"path"
 	"regexp"
@@ -30,11 +29,6 @@ import (
 	info "github.com/google/cadvisor/info/v1"
 	"github.com/google/cadvisor/watcher"
 )
-
-var ArgContainerdEndpoint = flag.String("containerd", "/run/containerd/containerd.sock", "containerd endpoint")
-var ArgContainerdNamespace = flag.String("containerd-namespace", "k8s.io", "containerd namespace")
-
-var containerdEnvMetadataWhiteList = flag.String("containerd_env_metadata_whitelist", "", "DEPRECATED: this flag will be removed, please use `env_metadata_whitelist`. A comma-separated list of environment variable keys matched with specified prefix that needs to be collected for containerd containers")
 
 // The namespace under which containerd aliases are unique.
 const k8sContainerdNamespace = "containerd"
@@ -52,6 +46,7 @@ type containerdFactory struct {
 	// Information about mounted filesystems.
 	fsInfo          fs.FsInfo
 	includedMetrics container.MetricSet
+	options         *Options
 }
 
 func (f *containerdFactory) String() string {
@@ -59,16 +54,9 @@ func (f *containerdFactory) String() string {
 }
 
 func (f *containerdFactory) NewContainerHandler(name string, metadataEnvAllowList []string, inHostNamespace bool) (handler container.ContainerHandler, err error) {
-	client, err := Client(*ArgContainerdEndpoint, *ArgContainerdNamespace)
+	client, err := Client(f.options.ContainerdEndpoint, f.options.ContainerdNamespace)
 	if err != nil {
 		return
-	}
-
-	containerdMetadataEnvAllowList := strings.Split(*containerdEnvMetadataWhiteList, ",")
-
-	// prefer using the unified metadataEnvAllowList
-	if len(metadataEnvAllowList) != 0 {
-		containerdMetadataEnvAllowList = metadataEnvAllowList
 	}
 
 	return newContainerdContainerHandler(
@@ -78,7 +66,7 @@ func (f *containerdFactory) NewContainerHandler(name string, metadataEnvAllowLis
 		f.fsInfo,
 		f.cgroupSubsystems,
 		inHostNamespace,
-		containerdMetadataEnvAllowList,
+		metadataEnvAllowList,
 		f.includedMetrics,
 	)
 }
@@ -126,20 +114,20 @@ func (f *containerdFactory) DebugInfo() map[string][]string {
 }
 
 // Register root container before running this function!
-func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) error {
-	client, err := Client(*ArgContainerdEndpoint, *ArgContainerdNamespace)
+func Register(opts *Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	client, err := Client(opts.ContainerdEndpoint, opts.ContainerdNamespace)
 	if err != nil {
-		return fmt.Errorf("unable to create containerd client: %v", err)
+		return nil, fmt.Errorf("unable to create containerd client: %v", err)
 	}
 
 	containerdVersion, err := client.Version(context.Background())
 	if err != nil {
-		return fmt.Errorf("failed to fetch containerd client version: %v", err)
+		return nil, fmt.Errorf("failed to fetch containerd client version: %v", err)
 	}
 
 	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems(includedMetrics)
 	if err != nil {
-		return fmt.Errorf("failed to get cgroup subsystems: %v", err)
+		return nil, fmt.Errorf("failed to get cgroup subsystems: %v", err)
 	}
 
 	klog.V(1).Infof("Registering containerd factory")
@@ -150,8 +138,10 @@ func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics
 		machineInfoFactory: factory,
 		version:            containerdVersion,
 		includedMetrics:    includedMetrics,
+		options:            opts,
 	}
 
-	container.RegisterContainerHandlerFactory(f, []watcher.ContainerWatchSource{watcher.Raw})
-	return nil
+	return container.Factories{
+		watcher.Raw: []container.ContainerHandlerFactory{f},
+	}, nil
 }

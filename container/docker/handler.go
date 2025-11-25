@@ -88,6 +88,8 @@ type dockerContainerHandler struct {
 	reference info.ContainerReference
 
 	libcontainerHandler *containerlibcontainer.Handler
+
+	options *Options
 }
 
 var _ container.ContainerHandler = &dockerContainerHandler{}
@@ -125,6 +127,7 @@ func newDockerContainerHandler(
 	thinPoolName string,
 	thinPoolWatcher *devicemapper.ThinPoolWatcher,
 	zfsWatcher *zfs.ZfsWatcher,
+	options *Options,
 ) (container.ContainerHandler, error) {
 	// Create the cgroup paths.
 	cgroupPaths := common.MakeCgroupPaths(cgroupSubsystems, name)
@@ -154,7 +157,7 @@ func newDockerContainerHandler(
 
 	// Determine the rootfs storage dir OR the pool name to determine the device.
 	// For devicemapper, we only need the thin pool name, and that is passed in to this call
-	rootfsStorageDir, zfsFilesystem, zfsParent, err := DetermineDeviceStorage(storageDriver, storageDir, rwLayerID)
+	rootfsStorageDir, zfsFilesystem, zfsParent, err := options.DetermineDeviceStorage(storageDriver, storageDir, rwLayerID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to determine device storage: %v", err)
 	}
@@ -180,6 +183,7 @@ func newDockerContainerHandler(
 		labels:             ctnr.Config.Labels,
 		includedMetrics:    metrics,
 		zfsParent:          zfsParent,
+		options:            options,
 	}
 	// Timestamp returned by Docker is in time.RFC3339Nano format.
 	handler.creationTime, err = time.Parse(time.RFC3339Nano, ctnr.Created)
@@ -248,7 +252,7 @@ func newDockerContainerHandler(
 	return handler, nil
 }
 
-func DetermineDeviceStorage(storageDriver StorageDriver, storageDir string, rwLayerID string) (
+func (opts *Options) DetermineDeviceStorage(storageDriver StorageDriver, storageDir string, rwLayerID string) (
 	rootfsStorageDir string, zfsFilesystem string, zfsParent string, err error) {
 	switch storageDriver {
 	case AufsStorageDriver:
@@ -261,7 +265,7 @@ func DetermineDeviceStorage(storageDriver StorageDriver, storageDir string, rwLa
 		rootfsStorageDir = path.Join(storageDir)
 	case ZfsStorageDriver:
 		var status info.DockerStatus
-		status, err = Status()
+		status, err = opts.Status()
 		if err != nil {
 			return
 		}

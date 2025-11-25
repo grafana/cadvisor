@@ -206,8 +206,8 @@ func validateCgroups() (string, string) {
 	return Recommended, out
 }
 
-func validateDockerInfo() (string, string) {
-	info, err := docker.ValidateInfo(docker.Info, docker.VersionString)
+func validateDockerInfo(opts *docker.Options) (string, string) {
+	info, err := docker.ValidateInfo(opts.Info, opts.VersionString)
 	if err != nil {
 		return Unsupported, fmt.Sprintf("Docker setup is invalid: %v", err)
 	}
@@ -310,7 +310,8 @@ func HandleRequest(w http.ResponseWriter, containerManager manager.Manager) erro
 	dockerValidation, desc := validateDockerVersion(versionInfo.DockerVersion)
 	out += fmt.Sprintf(OutputFormat, "Docker version", dockerValidation, desc)
 
-	dockerInfoValidation, desc := validateDockerInfo()
+	// TODO - fix this to get docker options from containerManager
+	dockerInfoValidation, desc := validateDockerInfo(docker.DefaultOptions())
 	out += fmt.Sprintf(OutputFormat, "Docker driver setup", dockerInfoValidation, desc)
 
 	ioSchedulerValidation, desc := validateIoScheduler(containerManager)

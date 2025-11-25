@@ -41,14 +41,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var ArgDockerEndpoint = flag.String("docker", "unix:///var/run/docker.sock", "docker endpoint")
-var ArgDockerTLS = flag.Bool("docker-tls", false, "use TLS to connect to docker")
-var ArgDockerCert = flag.String("docker-tls-cert", "cert.pem", "path to client certificate")
-var ArgDockerKey = flag.String("docker-tls-key", "key.pem", "path to private key")
-var ArgDockerCA = flag.String("docker-tls-ca", "ca.pem", "path to trusted CA")
-
-var dockerEnvMetadataWhiteList = flag.String("docker_env_metadata_whitelist", "", "DEPRECATED: this flag will be removed, please use `env_metadata_whitelist`. A comma-separated list of environment variable keys matched with specified prefix that needs to be collected for docker containers")
-
 // The namespace under which Docker aliases are unique.
 const DockerNamespace = "docker"
 
@@ -73,10 +65,10 @@ var (
 	disableThinLs = true
 )
 
-func RootDir() string {
+func (opts *Options) RootDir() string {
 	dockerRootDirOnce.Do(func() {
 		for i := 0; i < rootDirRetries; i++ {
-			status, err := Status()
+			status, err := opts.Status()
 			if err == nil && status.RootDir != "" {
 				dockerRootDir = status.RootDir
 				break
@@ -126,6 +118,8 @@ type dockerFactory struct {
 	thinPoolWatcher *devicemapper.ThinPoolWatcher
 
 	zfsWatcher *zfs.ZfsWatcher
+
+	options *Options
 }
 
 func (f *dockerFactory) String() string {
@@ -133,16 +127,9 @@ func (f *dockerFactory) String() string {
 }
 
 func (f *dockerFactory) NewContainerHandler(name string, metadataEnvAllowList []string, inHostNamespace bool) (handler container.ContainerHandler, err error) {
-	client, err := Client()
+	client, err := f.options.Client()
 	if err != nil {
 		return
-	}
-
-	dockerMetadataEnvAllowList := strings.Split(*dockerEnvMetadataWhiteList, ",")
-
-	// prefer using the unified metadataEnvAllowList
-	if len(metadataEnvAllowList) != 0 {
-		dockerMetadataEnvAllowList = metadataEnvAllowList
 	}
 
 	handler, err = newDockerContainerHandler(
@@ -154,12 +141,13 @@ func (f *dockerFactory) NewContainerHandler(name string, metadataEnvAllowList []
 		f.storageDir,
 		f.cgroupSubsystems,
 		inHostNamespace,
-		dockerMetadataEnvAllowList,
+		metadataEnvAllowList,
 		f.dockerVersion,
 		f.includedMetrics,
 		f.thinPoolName,
 		f.thinPoolWatcher,
 		f.zfsWatcher,
+		f.options,
 	)
 	return
 }
@@ -303,25 +291,25 @@ func ensureThinLsKernelVersion(kernelVersion string) error {
 }
 
 // Register root container before running this function!
-func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) error {
-	client, err := Client()
+func Register(opts *Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	client, err := opts.Client()
 	if err != nil {
-		return fmt.Errorf("unable to communicate with docker daemon: %v", err)
+		return nil, fmt.Errorf("unable to communicate with docker daemon: %v", err)
 	}
 
-	dockerInfo, err := ValidateInfo(Info, VersionString)
+	dockerInfo, err := ValidateInfo(opts.Info, opts.VersionString)
 	if err != nil {
-		return fmt.Errorf("failed to validate Docker info: %v", err)
+		return nil, fmt.Errorf("failed to validate Docker info: %v", err)
 	}
 
 	// Version already validated above, assume no error here.
 	dockerVersion, _ := ParseVersion(dockerInfo.ServerVersion, VersionRe, 3)
 
-	dockerAPIVersion, _ := APIVersion()
+	dockerAPIVersion, _ := opts.APIVersion()
 
 	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems(includedMetrics)
 	if err != nil {
-		return fmt.Errorf("failed to get cgroup subsystems: %v", err)
+		return nil, fmt.Errorf("failed to get cgroup subsystems: %v", err)
 	}
 
 	var (
@@ -337,7 +325,7 @@ func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics
 			}
 
 			// Safe to ignore error - driver status should always be populated.
-			status, _ := StatusFromDockerInfo(*dockerInfo)
+			status, _ := opts.StatusFromDockerInfo(*dockerInfo)
 			thinPoolName = status.DriverStatus[dockerutil.DriverStatusPoolName]
 		}
 
@@ -358,13 +346,15 @@ func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics
 		fsInfo:             fsInfo,
 		machineInfoFactory: factory,
 		storageDriver:      StorageDriver(dockerInfo.Driver),
-		storageDir:         RootDir(),
+		storageDir:         opts.RootDir(),
 		includedMetrics:    includedMetrics,
 		thinPoolName:       thinPoolName,
 		thinPoolWatcher:    thinPoolWatcher,
 		zfsWatcher:         zfsWatcher,
+		options:            opts,
 	}
 
-	container.RegisterContainerHandlerFactory(f, []watcher.ContainerWatchSource{watcher.Raw})
-	return nil
+	return container.Factories{
+		watcher.Raw: []container.ContainerHandlerFactory{f},
+	}, nil
 }

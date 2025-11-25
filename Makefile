@@ -87,8 +87,8 @@ lint:
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin $(GOLANGCI_VER); \
 	fi
 	@echo ">> running golangci-lint using configuration at .golangci.yml"
-	@golangci-lint run
-	@cd cmd && golangci-lint run
+	@$$(go env GOPATH)/bin/golangci-lint run
+	@cd cmd && $$(go env GOPATH)/bin/golangci-lint run
 
 clean:
 	@rm -f *.test cadvisor

@@ -41,12 +41,12 @@ func servePodmanPage(m manager.Manager, w http.ResponseWriter, u *url.URL) {
 
 	if containerName == "/" {
 		// Scenario for all containers.
-		status, err := podman.Status()
+		status, err := podman.DefaultOptions().Status()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to get podman info: %v", err), http.StatusInternalServerError)
 			return
 		}
-		images, err := podman.Images()
+		images, err := podman.DefaultOptions().Images()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to get podman images: %v", err), http.StatusInternalServerError)
 			return
