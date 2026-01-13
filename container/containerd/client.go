@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	containersapi "github.com/containerd/containerd/api/services/containers/v1"
@@ -52,10 +51,6 @@ var (
 	ErrTaskIsInUnknownState = errors.New("containerd task is in unknown state") // used when process reported in containerd task is in Unknown State
 )
 
-var once sync.Once
-var ctrdClient ContainerdClient = nil
-var ctrdClientErr error = nil
-
 const (
 	maxBackoffDelay   = 3 * time.Second
 	baseBackoffDelay  = 100 * time.Millisecond
@@ -64,11 +59,11 @@ const (
 )
 
 // Client creates a containerd client
-func Client(address, namespace string) (ContainerdClient, error) {
-	once.Do(func() {
+func (opts *Options) Client(address, namespace string) (ContainerdClient, error) {
+	opts.once.Do(func() {
 		tryConn, err := net.DialTimeout("unix", address, connectionTimeout)
 		if err != nil {
-			ctrdClientErr = fmt.Errorf("containerd: cannot unix dial containerd api service: %v", err)
+			opts.ctrdClientErr = fmt.Errorf("containerd: cannot unix dial containerd api service: %v", err)
 			return
 		}
 		tryConn.Close()
@@ -78,7 +73,6 @@ func Client(address, namespace string) (ContainerdClient, error) {
 		}
 		connParams.Backoff.BaseDelay = baseBackoffDelay
 		connParams.Backoff.MaxDelay = maxBackoffDelay
-		//nolint:staticcheck // SA1019
 		gopts := []grpc.DialOption{
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithContextDialer(dialer.ContextDialer),
@@ -94,19 +88,18 @@ func Client(address, namespace string) (ContainerdClient, error) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), connectionTimeout)
 		defer cancel()
-		//nolint:staticcheck // SA1019
 		conn, err := grpc.DialContext(ctx, dialer.DialAddress(address), gopts...)
 		if err != nil {
-			ctrdClientErr = err
+			opts.ctrdClientErr = err
 			return
 		}
-		ctrdClient = &client{
+		opts.ctrdClient = &client{
 			containerService: containersapi.NewContainersClient(conn),
 			taskService:      tasksapi.NewTasksClient(conn),
 			versionService:   versionapi.NewVersionClient(conn),
 		}
 	})
-	return ctrdClient, ctrdClientErr
+	return opts.ctrdClient, opts.ctrdClientErr
 }
 
 func (c *client) LoadContainer(ctx context.Context, id string) (*containers.Container, error) {
@@ -142,7 +135,6 @@ func (c *client) Version(ctx context.Context) (string, error) {
 
 func containerFromProto(containerpb *containersapi.Container) *containers.Container {
 	var runtime containers.RuntimeInfo
-	// TODO: is nil check required for containerpb
 	if containerpb.Runtime != nil {
 		runtime = containers.RuntimeInfo{
 			Name:    containerpb.Runtime.Name,

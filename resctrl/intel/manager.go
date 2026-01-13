@@ -23,7 +23,6 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/google/cadvisor/container/raw"
 	"github.com/google/cadvisor/resctrl"
 	"github.com/google/cadvisor/stats"
 )
@@ -45,7 +44,7 @@ func (m *manager) GetCollector(containerName string, getContainerPids func() ([]
 	return collector, nil
 }
 
-func NewManager(interval time.Duration, setup func() error, vendorID string, inHostNamespace bool) (resctrl.ResControlManager, error) {
+func NewManager(interval time.Duration, setup func() error, vendorID string, inHostNamespace bool, isDockerOnly bool) (resctrl.ResControlManager, error) {
 	err := setup()
 	if err != nil {
 		return &NoopManager{}, err
@@ -58,7 +57,7 @@ func NewManager(interval time.Duration, setup func() error, vendorID string, inH
 		return &NoopManager{}, errors.New("there are no monitoring features available")
 	}
 
-	if !*raw.DockerOnly {
+	if !isDockerOnly {
 		klog.Warning("--docker_only should be set when collecting Resctrl metrics! See the runtime docs.")
 	}
 
