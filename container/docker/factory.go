@@ -82,12 +82,13 @@ func (opts *Options) RootDir() string {
 type StorageDriver string
 
 const (
-	DevicemapperStorageDriver StorageDriver = "devicemapper"
-	AufsStorageDriver         StorageDriver = "aufs"
-	OverlayStorageDriver      StorageDriver = "overlay"
-	Overlay2StorageDriver     StorageDriver = "overlay2"
-	ZfsStorageDriver          StorageDriver = "zfs"
-	VfsStorageDriver          StorageDriver = "vfs"
+	DevicemapperStorageDriver          StorageDriver = "devicemapper"
+	AufsStorageDriver                  StorageDriver = "aufs"
+	OverlayStorageDriver               StorageDriver = "overlay"
+	Overlay2StorageDriver              StorageDriver = "overlay2"
+	ContainerdSnapshotterStorageDriver StorageDriver = "overlayfs"
+	ZfsStorageDriver                   StorageDriver = "zfs"
+	VfsStorageDriver                   StorageDriver = "vfs"
 )
 
 type dockerFactory struct {

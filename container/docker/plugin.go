@@ -40,6 +40,8 @@ type Options struct {
 	DockerKey      string
 	DockerCA       string
 
+	ContainerDEndpoint string
+
 	dockerClientOnce sync.Once
 	dockerClient     *dclient.Client
 	dockerClientErr  error
@@ -50,11 +52,12 @@ type Options struct {
 
 func DefaultOptions() *Options {
 	return &Options{
-		DockerEndpoint: "unix:///var/run/docker.sock",
-		DockerTLS:      false,
-		DockerCert:     "cert.pem",
-		DockerKey:      "key.pem",
-		DockerCA:       "ca.pem",
+		DockerEndpoint:     "unix:///var/run/docker.sock",
+		DockerTLS:          false,
+		DockerCert:         "cert.pem",
+		DockerKey:          "key.pem",
+		DockerCA:           "ca.pem",
+		ContainerDEndpoint: "/run/containerd/containerd.sock",
 	}
 }
 

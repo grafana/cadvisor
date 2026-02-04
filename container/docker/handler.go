@@ -16,6 +16,7 @@
 package docker
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/google/cadvisor/container"
 	"github.com/google/cadvisor/container/common"
+	"github.com/google/cadvisor/container/containerd/namespaces"
 	dockerutil "github.com/google/cadvisor/container/docker/utils"
 	containerlibcontainer "github.com/google/cadvisor/container/libcontainer"
 	"github.com/google/cadvisor/devicemapper"
@@ -32,6 +34,7 @@ import (
 	info "github.com/google/cadvisor/info/v1"
 	"github.com/google/cadvisor/zfs"
 	"github.com/opencontainers/cgroups"
+	"github.com/opencontainers/runtime-spec/specs-go"
 
 	docker "github.com/docker/docker/client"
 	"golang.org/x/net/context"
@@ -148,17 +151,48 @@ func newDockerContainerHandler(
 	// FIXME: Give `otherStorageDir` a more descriptive name.
 	otherStorageDir := path.Join(storageDir, pathToContainersDir, id)
 
-	rwLayerID, err := getRwLayerID(id, storageDir, storageDriver, dockerVersion)
-	if err != nil {
-		return nil, err
+	var rootfsStorageDir, zfsFilesystem, zfsParent string
+	if storageDriver == ContainerdSnapshotterStorageDriver {
+		ctx := namespaces.WithNamespace(context.Background(), "moby")
+		containerDClient, err := opts.ContainerDClient()
+		if err != nil {
+			return nil, fmt.Errorf("unable to create containerd client for overlayfs storage driver: %v", err)
+		}
+		cntr, err := containerDClient.LoadContainer(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		var spec specs.Spec
+		if err := json.Unmarshal(cntr.Spec.Value, &spec); err != nil {
+			return nil, err
+		}
+		rootfsStorageDir = spec.Root.Path
+	} else {
+		rwLayerID, err := getRwLayerID(id, storageDir, storageDriver, dockerVersion)
+		if err != nil {
+			return nil, err
+		}
+
+		// Determine the rootfs storage dir OR the pool name to determine the device.
+		// For devicemapper, we only need the thin pool name, and that is passed in to this call
+		rootfsStorageDir, zfsFilesystem, zfsParent, err = DetermineDeviceStorage(opts, storageDriver, storageDir, rwLayerID)
+		if err != nil {
+			return nil, fmt.Errorf("unable to determine device storage: %v", err)
+		}
 	}
 
-	// Determine the rootfs storage dir OR the pool name to determine the device.
-	// For devicemapper, we only need the thin pool name, and that is passed in to this call
-	rootfsStorageDir, zfsFilesystem, zfsParent, err := DetermineDeviceStorage(opts, storageDriver, storageDir, rwLayerID)
-	if err != nil {
-		return nil, fmt.Errorf("unable to determine device storage: %v", err)
-	}
+	// rwLayerID, err := getRwLayerID(id, storageDir, storageDriver, dockerVersion)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// // Determine the rootfs storage dir OR the pool name to determine the device.
+	// // For devicemapper, we only need the thin pool name, and that is passed in to this call
+	// rootfsStorageDir, zfsFilesystem, zfsParent, err := DetermineDeviceStorage(opts, storageDriver, storageDir, rwLayerID)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("unable to determine device storage: %v", err)
+	// }
 
 	// We assume that if Inspect fails then the container is not known to docker.
 	ctnr, err := client.ContainerInspect(context.Background(), id)

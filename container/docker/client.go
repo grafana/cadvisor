@@ -22,6 +22,7 @@ import (
 
 	dclient "github.com/docker/docker/client"
 	"github.com/docker/go-connections/tlsconfig"
+	"github.com/google/cadvisor/container/containerd"
 )
 
 // Client creates a Docker API client based on the given Docker flags
@@ -51,4 +52,13 @@ func (opts *Options) Client() (*dclient.Client, error) {
 			dclient.WithAPIVersionNegotiation())
 	})
 	return opts.dockerClient, opts.dockerClientErr
+}
+
+func (opts *Options) ContainerDClient() (containerd.ContainerdClient, error) {
+	cOpts := &containerd.Options{
+		ContainerdEndpoint:  opts.ContainerDEndpoint,
+		ContainerdNamespace: "moby",
+	}
+
+	return cOpts.Client(opts.ContainerDEndpoint, cOpts.ContainerdNamespace)
 }
