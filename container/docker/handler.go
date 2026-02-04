@@ -67,8 +67,9 @@ type dockerContainerHandler struct {
 	creationTime time.Time
 
 	// Metadata associated with the container.
-	envs   map[string]string
-	labels map[string]string
+	envs         map[string]string
+	labels       map[string]string
+	healthStatus string
 
 	// Image name used for this container.
 	image string
@@ -182,18 +183,6 @@ func newDockerContainerHandler(
 		}
 	}
 
-	// rwLayerID, err := getRwLayerID(id, storageDir, storageDriver, dockerVersion)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// // Determine the rootfs storage dir OR the pool name to determine the device.
-	// // For devicemapper, we only need the thin pool name, and that is passed in to this call
-	// rootfsStorageDir, zfsFilesystem, zfsParent, err := DetermineDeviceStorage(opts, storageDriver, storageDir, rwLayerID)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("unable to determine device storage: %v", err)
-	// }
-
 	// We assume that if Inspect fails then the container is not known to docker.
 	ctnr, err := client.ContainerInspect(context.Background(), id)
 	if err != nil {
@@ -216,6 +205,12 @@ func newDockerContainerHandler(
 		includedMetrics:    metrics,
 		zfsParent:          zfsParent,
 	}
+
+	// Health status may be nil if no health check is configured
+	if ctnr.State.Health != nil {
+		handler.healthStatus = ctnr.State.Health.Status
+	}
+
 	// Timestamp returned by Docker is in time.RFC3339Nano format.
 	handler.creationTime, err = time.Parse(time.RFC3339Nano, ctnr.Created)
 	if err != nil {
@@ -341,6 +336,8 @@ func (h *dockerContainerHandler) GetStats() (*info.ContainerStats, error) {
 	if err != nil {
 		return stats, err
 	}
+
+	stats.Health.Status = h.healthStatus
 
 	// Get filesystem stats.
 	err = FsStats(stats, h.machineInfoFactory, h.includedMetrics, h.storageDriver,
