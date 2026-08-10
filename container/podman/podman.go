@@ -28,7 +28,6 @@ import (
 	dockerimage "github.com/moby/moby/api/types/image"
 	dockersystem "github.com/moby/moby/api/types/system"
 
-	"github.com/google/cadvisor/container/docker"
 	"github.com/google/cadvisor/container/docker/utils"
 	v1 "github.com/google/cadvisor/info/v1"
 )
@@ -59,11 +58,11 @@ func validateResponse(gotError error, response *http.Response) error {
 	return err
 }
 
-func apiGetRequest(url string, item interface{}) error {
+func (opts *Options) apiGetRequest(url string, item interface{}) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	conn, err := client(&ctx)
+	conn, err := opts.client(&ctx)
 	if err != nil {
 		return err
 	}
@@ -94,34 +93,34 @@ func apiGetRequest(url string, item interface{}) error {
 	return ctx.Err()
 }
 
-func Images() ([]v1.DockerImage, error) {
+func (opts *Options) Images() ([]v1.DockerImage, error) {
 	var summaries []dockerimage.Summary
-	err := apiGetRequest("http://d/v1.0.0/images/json", &summaries)
+	err := opts.apiGetRequest("http://d/v1.0.0/images/json", &summaries)
 	if err != nil {
 		return nil, err
 	}
 	return utils.SummariesToImages(summaries)
 }
 
-func Status() (v1.DockerStatus, error) {
-	podmanInfo, err := GetInfo()
+func (opts *Options) Status() (v1.DockerStatus, error) {
+	podmanInfo, err := opts.GetInfo()
 	if err != nil {
 		return v1.DockerStatus{}, err
 	}
 
-	status, err := docker.StatusFromDockerInfo(*podmanInfo)
+	status, err := opts.dockerOptions.StatusFromDockerInfo(*podmanInfo)
 	if err != nil {
 		return v1.DockerStatus{}, err
 	}
 
-	podmanVersion, err := VersionString()
+	podmanVersion, err := opts.VersionString()
 	if err != nil {
 		// status.Version will be "Unknown"
 		return status, err
 	}
 	status.Version = podmanVersion
 
-	podmanAPIVersion, err := APIVersionString()
+	podmanAPIVersion, err := opts.APIVersionString()
 	if err != nil {
 		// status.APIVersion will be "Unknown"
 		return status, err
@@ -131,15 +130,15 @@ func Status() (v1.DockerStatus, error) {
 	return status, nil
 }
 
-func GetInfo() (*dockersystem.Info, error) {
+func (opts *Options) GetInfo() (*dockersystem.Info, error) {
 	var info dockersystem.Info
-	err := apiGetRequest("http://d/v1.0.0/info", &info)
+	err := opts.apiGetRequest("http://d/v1.0.0/info", &info)
 	return &info, err
 }
 
-func VersionString() (string, error) {
+func (opts *Options) VersionString() (string, error) {
 	var version dockersystem.VersionResponse
-	err := apiGetRequest("http://d/v1.0.0/version", &version)
+	err := opts.apiGetRequest("http://d/v1.0.0/version", &version)
 	if err != nil {
 		return "Unknown", err
 	}
@@ -147,9 +146,9 @@ func VersionString() (string, error) {
 	return version.Version, nil
 }
 
-func APIVersionString() (string, error) {
+func (opts *Options) APIVersionString() (string, error) {
 	var version dockersystem.VersionResponse
-	err := apiGetRequest("http://d/v1.0.0/version", &version)
+	err := opts.apiGetRequest("http://d/v1.0.0/version", &version)
 	if err != nil {
 		return "Unknown", err
 	}
@@ -157,8 +156,8 @@ func APIVersionString() (string, error) {
 	return version.APIVersion, nil
 }
 
-func InspectContainer(id string) (dockercontainer.InspectResponse, error) {
+func (opts *Options) InspectContainer(id string) (dockercontainer.InspectResponse, error) {
 	var data dockercontainer.InspectResponse
-	err := apiGetRequest(fmt.Sprintf("http://d/v1.0.0/containers/%s/json", id), &data)
+	err := opts.apiGetRequest(fmt.Sprintf("http://d/v1.0.0/containers/%s/json", id), &data)
 	return data, err
 }

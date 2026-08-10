@@ -18,10 +18,10 @@ import (
 	"github.com/google/cadvisor/lib/container"
 	"github.com/google/cadvisor/lib/fs"
 	info "github.com/google/cadvisor/lib/model"
-	"github.com/google/cadvisor/lib/watcher"
 )
 
-// NewPlugin returns an implementation of container.Plugin suitable for passing to container.RegisterPlugin()
+// NewPlugin returns an implementation of container.Plugin suitable for passing
+// into manager.New's plugins map.
 func NewPlugin() container.Plugin {
 	return &plugin{}
 }
@@ -32,7 +32,6 @@ func (p *plugin) InitializeFSContext(context *fs.Context) error {
 	return nil
 }
 
-func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (watcher.ContainerWatcher, error) {
-	err := Register(factory, fsInfo, includedMetrics)
-	return nil, err
+func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	return Register(factory, fsInfo, includedMetrics)
 }

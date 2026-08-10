@@ -36,7 +36,6 @@ import (
 	info "github.com/google/cadvisor/info/v1"
 	"github.com/google/cadvisor/lib/container"
 	"github.com/google/cadvisor/lib/container/common"
-	"github.com/google/cadvisor/lib/container/containerd"
 	"github.com/google/cadvisor/lib/container/containerd/namespaces"
 	containerlibcontainer "github.com/google/cadvisor/lib/container/libcontainer"
 	"github.com/google/cadvisor/lib/fs"
@@ -126,7 +125,6 @@ func getRwLayerID(containerID, storageDir string, sd StorageDriver, dockerVersio
 // newContainerHandler returns a new container.ContainerHandler
 func newContainerHandler(
 	client *dclient.Client,
-	containerdClient containerd.ContainerdClient,
 	name string,
 	machineInfoFactory info.MachineInfoFactory,
 	fsInfo fs.FsInfo,
@@ -140,6 +138,7 @@ func newContainerHandler(
 	thinPoolName string,
 	thinPoolWatcher *devicemapper.ThinPoolWatcher,
 	zfsWatcher *zfs.ZfsWatcher,
+	opts *Options,
 ) (container.ContainerHandler, error) {
 	// Create the cgroup paths.
 	cgroupPaths := common.MakeCgroupPaths(cgroupSubsystems, name)
@@ -165,7 +164,11 @@ func newContainerHandler(
 	var rootfsStorageDir, zfsFilesystem, zfsParent string
 	if storageDriver == ContainerdSnapshotterStorageDriver {
 		ctx := namespaces.WithNamespace(context.Background(), "moby")
-		cntr, err := containerdClient.LoadContainer(ctx, id)
+		containerDClient, err := opts.ContainerDClient()
+		if err != nil {
+			return nil, fmt.Errorf("unable to create containerd client for overlayfs storage driver: %v", err)
+		}
+		cntr, err := containerDClient.LoadContainer(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -183,7 +186,7 @@ func newContainerHandler(
 
 		// Determine the rootfs storage dir OR the pool name to determine the device.
 		// For devicemapper, we only need the thin pool name, and that is passed in to this call
-		rootfsStorageDir, zfsFilesystem, zfsParent, err = DetermineDeviceStorage(storageDriver, storageDir, rwLayerID)
+		rootfsStorageDir, zfsFilesystem, zfsParent, err = DetermineDeviceStorage(opts, storageDriver, storageDir, rwLayerID)
 		if err != nil {
 			return nil, fmt.Errorf("unable to determine device storage: %v", err)
 		}
@@ -297,7 +300,7 @@ func newContainerHandler(
 	return handler, nil
 }
 
-func DetermineDeviceStorage(storageDriver StorageDriver, storageDir string, rwLayerID string) (
+func DetermineDeviceStorage(opts *Options, storageDriver StorageDriver, storageDir string, rwLayerID string) (
 	rootfsStorageDir string, zfsFilesystem string, zfsParent string, err error) {
 	switch storageDriver {
 	case AufsStorageDriver:
@@ -310,7 +313,7 @@ func DetermineDeviceStorage(storageDriver StorageDriver, storageDir string, rwLa
 		rootfsStorageDir = path.Join(storageDir)
 	case ZfsStorageDriver:
 		var status info.DockerStatus
-		status, err = Status()
+		status, err = opts.Status()
 		if err != nil {
 			return
 		}

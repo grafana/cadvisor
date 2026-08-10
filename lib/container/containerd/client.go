@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	containersapi "github.com/containerd/containerd/api/services/containers/v1"
@@ -69,10 +68,6 @@ func toNative(err error) error {
 	return err
 }
 
-var once sync.Once
-var ctrdClient ContainerdClient = nil
-var ctrdClientErr error = nil
-
 const (
 	maxBackoffDelay   = 3 * time.Second
 	baseBackoffDelay  = 100 * time.Millisecond
@@ -81,11 +76,11 @@ const (
 )
 
 // Client creates a containerd client
-func Client(address, namespace string) (ContainerdClient, error) {
-	once.Do(func() {
+func (opts *Options) Client(address, namespace string) (ContainerdClient, error) {
+	opts.once.Do(func() {
 		tryConn, err := net.DialTimeout("unix", address, connectionTimeout)
 		if err != nil {
-			ctrdClientErr = fmt.Errorf("containerd: cannot unix dial containerd api service: %v", err)
+			opts.ctrdClientErr = fmt.Errorf("containerd: cannot unix dial containerd api service: %v", err)
 			return
 		}
 		tryConn.Close()
@@ -114,16 +109,16 @@ func Client(address, namespace string) (ContainerdClient, error) {
 		//nolint:staticcheck // SA1019
 		conn, err := grpc.DialContext(ctx, dialer.DialAddress(address), gopts...)
 		if err != nil {
-			ctrdClientErr = err
+			opts.ctrdClientErr = err
 			return
 		}
-		ctrdClient = &client{
+		opts.ctrdClient = &client{
 			containerService: containersapi.NewContainersClient(conn),
 			taskService:      tasksapi.NewTasksClient(conn),
 			versionService:   versionapi.NewVersionClient(conn),
 		}
 	})
-	return ctrdClient, ctrdClientErr
+	return opts.ctrdClient, opts.ctrdClientErr
 }
 
 func (c *client) LoadContainer(ctx context.Context, id string) (*containers.Container, error) {

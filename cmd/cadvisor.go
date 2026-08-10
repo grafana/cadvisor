@@ -27,13 +27,19 @@ import (
 
 	"github.com/google/cadvisor/cmd/internal/appmetrics"
 	cadvisorhttp "github.com/google/cadvisor/cmd/internal/http"
+	"github.com/google/cadvisor/container/docker"
+	"github.com/google/cadvisor/container/podman"
 	"github.com/google/cadvisor/lib/container"
+	"github.com/google/cadvisor/lib/container/containerd"
+	"github.com/google/cadvisor/lib/container/crio"
+	"github.com/google/cadvisor/lib/container/raw"
+	"github.com/google/cadvisor/lib/container/systemd"
 	"github.com/google/cadvisor/lib/manager"
 	"github.com/google/cadvisor/lib/metrics"
 	"github.com/google/cadvisor/lib/utils/sysfs"
 	"github.com/google/cadvisor/lib/version"
 
-	// Register container providers
+	// Register filesystem plugins (container plugins are constructed explicitly below)
 	_ "github.com/google/cadvisor/cmd/internal/container/install"
 
 	// Register CloudProviders
@@ -77,6 +83,26 @@ var rawCgroupPrefixWhiteList = flag.String("raw_cgroup_prefix_whitelist", "", "A
 var perfEvents = flag.String("perf_events_config", "", "Path to a JSON file containing configuration of perf events to measure. Empty value disabled perf events measuring.")
 
 var resctrlInterval = flag.Duration("resctrl_interval", 0, "Resctrl mon groups updating interval. Zero value disables updating mon groups.")
+
+var (
+	// Docker arguments
+	ArgDockerEndpoint = flag.String("docker", "unix:///var/run/docker.sock", "docker endpoint")
+	ArgDockerTLS      = flag.Bool("docker-tls", false, "use TLS to connect to docker")
+	ArgDockerCert     = flag.String("docker-tls-cert", "cert.pem", "path to client certificate")
+	ArgDockerKey      = flag.String("docker-tls-key", "key.pem", "path to private key")
+	ArgDockerCA       = flag.String("docker-tls-ca", "ca.pem", "path to trusted CA")
+
+	// containerd arguments
+	ArgContainerdEndpoint  = flag.String("containerd", "/run/containerd/containerd.sock", "containerd endpoint")
+	ArgContainerdNamespace = flag.String("containerd-namespace", "k8s.io", "containerd namespace")
+
+	// podman argument
+	ArgPodmanEndpoint = flag.String("podman", "unix:///var/run/podman/podman.sock", "podman endpoint")
+
+	// raw arguments
+	DockerOnly             = flag.Bool("docker_only", false, "Only report docker containers in addition to root stats")
+	DisableRootCgroupStats = flag.Bool("disable_root_cgroup_stats", false, "Disable collecting root Cgroup stats")
+)
 
 var (
 	// Metrics to be ignored.
@@ -138,7 +164,27 @@ func main() {
 	// containers, which build collectors via the injected factory.
 	appmetrics.SetHTTPClient(*collectorCert, *collectorKey)
 
-	resourceManager, err := manager.New(memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval)
+	dockerOpts := &docker.Options{
+		DockerEndpoint:     *ArgDockerEndpoint,
+		DockerTLS:          *ArgDockerTLS,
+		DockerCert:         *ArgDockerCert,
+		DockerKey:          *ArgDockerKey,
+		DockerCA:           *ArgDockerCA,
+		ContainerDEndpoint: *ArgContainerdEndpoint,
+	}
+	plugins := map[string]container.Plugin{
+		"containerd": containerd.NewPluginWithOptions(&containerd.Options{
+			ContainerdEndpoint:  *ArgContainerdEndpoint,
+			ContainerdNamespace: *ArgContainerdNamespace,
+		}),
+		"docker": docker.NewPluginWithOptions(dockerOpts),
+		"crio":   crio.NewPlugin(),
+		"podman": podman.NewPluginWithOptions(*ArgPodmanEndpoint, dockerOpts),
+		"systemd": systemd.NewPlugin(),
+	}
+
+	collectorHTTPClient := http.DefaultClient
+	resourceManager, err := manager.New(plugins, memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, collectorHTTPClient, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval, raw.Options{DockerOnly: *DockerOnly, DisableRootCgroupStats: *DisableRootCgroupStats})
 	if err != nil {
 		klog.Fatalf("Failed to create a manager: %s", err)
 	}

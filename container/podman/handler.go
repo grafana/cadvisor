@@ -85,6 +85,8 @@ type containerHandler struct {
 	reference info.ContainerReference
 
 	libcontainerHandler *containerlibcontainer.Handler
+
+	options *Options
 }
 
 func newContainerHandler(
@@ -100,6 +102,7 @@ func newContainerHandler(
 	thinPoolName string,
 	thinPoolWatcher *devicemapper.ThinPoolWatcher,
 	zfsWatcher *zfs.ZfsWatcher,
+	opts *Options,
 ) (container.ContainerHandler, error) {
 	// Create the cgroup paths.
 	cgroupPaths := common.MakeCgroupPaths(cgroupSubsystems, name)
@@ -124,7 +127,7 @@ func newContainerHandler(
 	id := dockerutil.ContainerNameToId(name)
 
 	// We assume that if Inspect fails then the container is not known to Podman.
-	ctnr, err := InspectContainer(id)
+	ctnr, err := opts.InspectContainer(id)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +140,7 @@ func newContainerHandler(
 			// If the NetworkMode starts with 'container:' then we need to use the IP address of the container specified.
 			// This happens in cases such as kubernetes where the containers doesn't have an IP address itself and we need to use the pod's address
 			containerID := ctnr.HostConfig.NetworkMode.ConnectedContainer()
-			c, err = InspectContainer(containerID)
+			c, err = opts.InspectContainer(containerID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to inspect container %q: %v", containerID, err)
 			}
@@ -156,7 +159,7 @@ func newContainerHandler(
 
 	// Determine the rootfs storage dir OR the pool name to determine the device.
 	// For devicemapper, we only need the thin pool name, and that is passed in to this call
-	rootfsStorageDir, zfsFilesystem, zfsParent, err := determineDeviceStorage(storageDriver, storageDir, layerID)
+	rootfsStorageDir, zfsFilesystem, zfsParent, err := determineDeviceStorage(opts, storageDriver, storageDir, layerID)
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +189,7 @@ func newContainerHandler(
 			Namespace: Namespace,
 		},
 		libcontainerHandler: containerlibcontainer.NewHandler(cgroupManager, rootFs, ctnr.State.Pid, metrics),
+		options:             opts,
 	}
 
 	handler.creationTime, err = time.Parse(time.RFC3339, ctnr.Created)
@@ -235,7 +239,7 @@ func newContainerHandler(
 	return handler, nil
 }
 
-func determineDeviceStorage(storageDriver docker.StorageDriver, storageDir string, rwLayerID string) (
+func determineDeviceStorage(opts *Options, storageDriver docker.StorageDriver, storageDir string, rwLayerID string) (
 	rootfsStorageDir string, zfsFilesystem string, zfsParent string, err error) {
 	switch storageDriver {
 	// Podman aliased the driver names together.
@@ -243,7 +247,7 @@ func determineDeviceStorage(storageDriver docker.StorageDriver, storageDir strin
 		rootfsStorageDir = path.Join(storageDir, "overlay", rwLayerID, "diff")
 		return
 	default:
-		return docker.DetermineDeviceStorage(storageDriver, storageDir, rwLayerID)
+		return docker.DetermineDeviceStorage(opts.dockerOptions, storageDriver, storageDir, rwLayerID)
 	}
 }
 
@@ -346,7 +350,7 @@ func (h *containerHandler) Type() container.ContainerType {
 }
 
 func (h *containerHandler) GetExitCode() (int, error) {
-	ctnr, err := InspectContainer(h.reference.Id)
+	ctnr, err := h.options.InspectContainer(h.reference.Id)
 	if err != nil {
 		return -1, fmt.Errorf("failed to inspect container %s: %w", h.reference.Id, err)
 	}

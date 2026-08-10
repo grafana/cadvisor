@@ -20,6 +20,7 @@ package manager
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"strconv"
@@ -165,7 +166,12 @@ type HousekeepingConfig = struct {
 }
 
 // New takes a memory storage and returns a new manager.
-func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfig HousekeepingConfig, includedMetricsSet container.MetricSet, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration) (Manager, error) {
+//
+// collectorHTTPClient is accepted for Grafana/Alloy API compatibility with the
+// noglobals fork. In v0.60.5 application collectors are injected via
+// CollectorManagerFactory (cmd/appmetrics); Alloy typically passes a default
+// client and does not rely on this field for Prometheus scraping.
+func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfig HousekeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration, rawOptions raw.Options) (Manager, error) {
 	if memoryCache == nil {
 		return nil, fmt.Errorf("manager requires memory storage")
 	}
@@ -184,8 +190,11 @@ func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfi
 
 	context := fs.Context{}
 
-	if err := container.InitializeFSContext(&context); err != nil {
-		return nil, err
+	for name, plugin := range plugins {
+		if err := plugin.InitializeFSContext(&context); err != nil {
+			klog.V(5).Infof("Initialization of the %s context failed: %v", name, err)
+			return nil, err
+		}
 	}
 
 	fsInfo, err := fs.NewFsInfo(context)
@@ -204,6 +213,7 @@ func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfi
 	eventsChannel := make(chan watcher.ContainerEvent, 16)
 
 	newManager := &manager{
+		plugins:                               plugins,
 		quitChannels:                          make([]chan error, 0, 2),
 		memoryCache:                           memoryCache,
 		fsInfo:                                fsInfo,
@@ -217,8 +227,10 @@ func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfi
 		includedMetrics:                       includedMetricsSet,
 		containerWatchers:                     []watcher.ContainerWatcher{},
 		eventsChannel:                         eventsChannel,
+		collectorHTTPClient:                   collectorHTTPClient,
 		rawContainerCgroupPathPrefixWhiteList: rawContainerCgroupPathPrefixWhiteList,
 		containerEnvMetadataWhiteList:         containerEnvMetadataWhiteList,
+		rawOptions:                            rawOptions,
 	}
 
 	machineInfo, err := machine.Info(sysfs, fsInfo, inHostNamespace)
@@ -297,6 +309,7 @@ func (c *containerMap) Range(f func(name namespacedContainerName, data *containe
 }
 
 type manager struct {
+	plugins                   map[string]container.Plugin
 	containers                containerMap
 	memoryCache               *memory.InMemoryCache
 	fsInfo                    fs.FsInfo
@@ -312,11 +325,14 @@ type manager struct {
 	disableContainerDiscovery bool
 	includedMetrics           container.MetricSet
 	containerWatchers         []watcher.ContainerWatcher
+	containerFactories        container.Factories
 	eventsChannel             chan watcher.ContainerEvent
+	collectorHTTPClient       *http.Client
 	// List of raw container cgroup path prefix whitelist.
 	rawContainerCgroupPathPrefixWhiteList []string
 	// List of container env prefix whitelist, the matched container envs would be collected into metrics as extra labels.
 	containerEnvMetadataWhiteList []string
+	rawOptions                    raw.Options
 
 	// Collector managers for perf_event / resctrl. Default to Noop; the full
 	// cAdvisor binary injects real implementations via plugins.go.
@@ -331,13 +347,15 @@ type manager struct {
 
 // Start the container manager.
 func (m *manager) Start() error {
-	if !m.disableContainerDiscovery {
-		m.containerWatchers = container.InitializePlugins(m, m.fsInfo, m.includedMetrics)
-	}
+	// Always register factories so on-demand queries work when discovery is disabled.
+	m.containerFactories = container.InitializePlugins(m, m.plugins, m.fsInfo, m.includedMetrics)
 
-	err := raw.Register(m, m.fsInfo, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
+	rawFactories, err := raw.Register(m, m.fsInfo, m.rawOptions, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
 	if err != nil {
 		klog.Errorf("Registration of the raw container factory failed: %v", err)
+	}
+	for watchType, list := range rawFactories {
+		m.containerFactories[watchType] = append(m.containerFactories[watchType], list...)
 	}
 
 	if !m.disableContainerDiscovery {
@@ -349,7 +367,7 @@ func (m *manager) Start() error {
 	}
 
 	// If there are no factories, don't start any housekeeping and serve the information we do have.
-	if !container.HasFactories() {
+	if len(m.containerFactories) == 0 {
 		return nil
 	}
 
@@ -780,7 +798,7 @@ func (m *manager) GetMachineInfo() (*info.MachineInfo, error) {
 }
 
 func (m *manager) DebugInfo() map[string][]string {
-	debugInfo := container.DebugInfo()
+	debugInfo := container.DebugInfo(m.containerFactories)
 
 	// Get unique containers.
 	conts := make(map[*containerData]struct{})
@@ -830,7 +848,7 @@ func (m *manager) createContainer(containerName string, watchSource watcher.Cont
 		return nil
 	}
 
-	handler, accept, err := container.NewContainerHandler(containerName, watchSource, m.containerEnvMetadataWhiteList, m.inHostNamespace)
+	handler, accept, err := container.NewContainerHandler(m.containerFactories, containerName, watchSource, m.containerEnvMetadataWhiteList, m.inHostNamespace)
 	if err != nil {
 		return err
 	}

@@ -14,50 +14,51 @@
 
 //go:build linux
 
-// Handler for /validate content.
-// Validates cadvisor dependencies - kernel, os, docker setup.
-
 package docker
 
 import (
 	"net/http"
-	"sync"
 
 	"github.com/docker/go-connections/tlsconfig"
 	dclient "github.com/moby/moby/client"
+
+	"github.com/google/cadvisor/lib/container/containerd"
 )
 
-var (
-	dockerClient     *dclient.Client
-	dockerClientErr  error
-	dockerClientOnce sync.Once
-)
-
-// Client creates a Docker API client based on the given Docker flags
-func Client() (*dclient.Client, error) {
-	dockerClientOnce.Do(func() {
+// Client creates a Docker API client based on the given Docker options.
+func (opts *Options) Client() (*dclient.Client, error) {
+	opts.dockerClientOnce.Do(func() {
 		var client *http.Client
-		if *ArgDockerTLS {
+		if opts.DockerTLS {
 			client = &http.Client{}
 			options := tlsconfig.Options{
-				CAFile:             *ArgDockerCA,
-				CertFile:           *ArgDockerCert,
-				KeyFile:            *ArgDockerKey,
+				CAFile:             opts.DockerCA,
+				CertFile:           opts.DockerCert,
+				KeyFile:            opts.DockerKey,
 				InsecureSkipVerify: false,
 			}
 			tlsc, err := tlsconfig.Client(options)
 			if err != nil {
-				dockerClientErr = err
+				opts.dockerClientErr = err
 				return
 			}
 			client.Transport = &http.Transport{
 				TLSClientConfig: tlsc,
 			}
 		}
-		dockerClient, dockerClientErr = dclient.New(
-			dclient.WithHost(*ArgDockerEndpoint),
+		opts.dockerClient, opts.dockerClientErr = dclient.New(
+			dclient.WithHost(opts.DockerEndpoint),
 			dclient.WithHTTPClient(client),
 		)
 	})
-	return dockerClient, dockerClientErr
+	return opts.dockerClient, opts.dockerClientErr
+}
+
+// ContainerDClient returns a containerd client for overlayfs/snapshotter support.
+func (opts *Options) ContainerDClient() (containerd.ContainerdClient, error) {
+	cOpts := &containerd.Options{
+		ContainerdEndpoint:  opts.ContainerDEndpoint,
+		ContainerdNamespace: "moby",
+	}
+	return cOpts.Client(opts.ContainerDEndpoint, cOpts.ContainerdNamespace)
 }

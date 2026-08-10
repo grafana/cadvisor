@@ -17,24 +17,34 @@
 package containerd
 
 import (
+	"sync"
+
 	"github.com/google/cadvisor/lib/container"
 	"github.com/google/cadvisor/lib/fs"
 	info "github.com/google/cadvisor/lib/model"
-	"github.com/google/cadvisor/lib/watcher"
 )
 
-// NewPlugin returns an implementation of container.Plugin suitable for passing to container.RegisterPlugin()
-func NewPlugin() container.Plugin {
-	return &plugin{}
+func NewPluginWithOptions(o *Options) container.Plugin {
+	return &plugin{options: o}
 }
 
-type plugin struct{}
+type plugin struct {
+	options *Options
+}
+
+type Options struct {
+	ContainerdEndpoint  string
+	ContainerdNamespace string
+
+	once          sync.Once
+	ctrdClient    ContainerdClient
+	ctrdClientErr error
+}
 
 func (p *plugin) InitializeFSContext(context *fs.Context) error {
 	return nil
 }
 
-func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (watcher.ContainerWatcher, error) {
-	err := Register(factory, fsInfo, includedMetrics)
-	return nil, err
+func (p *plugin) Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	return Register(p.options, factory, fsInfo, includedMetrics)
 }

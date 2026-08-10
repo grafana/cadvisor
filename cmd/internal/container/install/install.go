@@ -12,17 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// The install package registers all included container providers when imported
+// The install package registers filesystem plugins when imported.
+// Container providers are constructed explicitly in cmd/cadvisor.go.
 package install
 
 import (
-	// Register all included container providers.
-	_ "github.com/google/cadvisor/container/docker/install"
-	_ "github.com/google/cadvisor/container/podman/install"
-	_ "github.com/google/cadvisor/lib/container/containerd/install"
-	_ "github.com/google/cadvisor/lib/container/crio/install"
-	_ "github.com/google/cadvisor/lib/container/systemd/install"
-
 	// Register all filesystem plugins.
 	_ "github.com/google/cadvisor/fs/devicemapper/install"
 	_ "github.com/google/cadvisor/lib/fs/btrfs/install"

@@ -191,7 +191,6 @@ func createManagerAndAddContainers(
 	f func(*containertest.MockContainerHandler),
 	t *testing.T,
 ) *manager {
-	container.ClearContainerHandlerFactories()
 	mif := &manager{
 		quitChannels: make([]chan error, 0, 2),
 		memoryCache:  memoryCache,
@@ -229,7 +228,6 @@ func createManagerAndAddSubContainers(
 	f func(*containertest.MockContainerHandler),
 	t *testing.T,
 ) *manager {
-	container.ClearContainerHandlerFactories()
 	mif := &manager{
 		quitChannels: make([]chan error, 0, 2),
 		memoryCache:  memoryCache,
@@ -777,16 +775,13 @@ func (f *mockContainerHandlerFactory) NewContainerHandler(name string, metadataE
 }
 
 func TestGetContainerDiscoveryDisabled(t *testing.T) {
-	container.ClearContainerHandlerFactories()
-	defer container.ClearContainerHandlerFactories()
-
-	container.RegisterContainerHandlerFactory(
-		&mockContainerHandlerFactory{canHandle: true, canAccept: true},
-		[]watcher.ContainerWatchSource{watcher.Raw},
-	)
-
 	m := newTestManager()
 	m.disableContainerDiscovery = true
+	m.containerFactories = container.Factories{
+		watcher.Raw: []container.ContainerHandlerFactory{
+			&mockContainerHandlerFactory{canHandle: true, canAccept: true},
+		},
+	}
 
 	// First call: container doesn't exist, should be lazily created.
 	cont, err := m.getContainer("/system.slice/kubelet.service")
@@ -811,15 +806,12 @@ func TestGetContainerDiscoveryDisabled(t *testing.T) {
 }
 
 func TestGetContainerDiscoveryEnabled(t *testing.T) {
-	container.ClearContainerHandlerFactories()
-	defer container.ClearContainerHandlerFactories()
-
-	container.RegisterContainerHandlerFactory(
-		&mockContainerHandlerFactory{canHandle: true, canAccept: true},
-		[]watcher.ContainerWatchSource{watcher.Raw},
-	)
-
 	m := newTestManager()
+	m.containerFactories = container.Factories{
+		watcher.Raw: []container.ContainerHandlerFactory{
+			&mockContainerHandlerFactory{canHandle: true, canAccept: true},
+		},
+	}
 
 	_, err := m.getContainer("/system.slice/kubelet.service")
 	if err == nil {
