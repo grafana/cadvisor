@@ -31,16 +31,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// client is the process-wide HTTP client used to scrape collector endpoints. It
+// NewHTTPClient builds the HTTP client used to scrape collector endpoints. It
 // accepts any TLS certificate (collector endpoints are frequently self-signed);
-// SetHTTPClient adds client-certificate (mutual TLS) auth when configured.
-var client = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
-
-// SetHTTPClient (re)configures the collector HTTP client. With a cert/key it
-// adds client-certificate (mutual TLS) authentication to collector endpoints.
-// Call once at startup (from main, after flag parsing) before any collectors
-// are built; an invalid cert/key is fatal, matching upstream's startup check.
-func SetHTTPClient(certFile, keyFile string) {
+// with a cert/key it adds client-certificate (mutual TLS) authentication. An
+// invalid cert/key is fatal, matching upstream's startup check. Callers (e.g.
+// cmd/cadvisor.go) build this once and pass it explicitly into manager.New, so
+// a caller such as Alloy can configure it per instance instead of through a
+// process-global setter.
+func NewHTTPClient(certFile, keyFile string) *http.Client {
 	tlsConfig := &tls.Config{InsecureSkipVerify: true}
 	if certFile != "" {
 		if keyFile == "" {
@@ -52,14 +50,15 @@ func SetHTTPClient(certFile, keyFile string) {
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
-	client = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
+	return &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 }
 
 // NewManager builds a collector manager for a container, registering the
 // application-metrics collectors declared via its labels. readFile reads a
-// collector config file from inside the container. It satisfies the shape the
+// collector config file from inside the container. httpClient is used to
+// scrape collector endpoints (see NewHTTPClient). It satisfies the shape the
 // library's manager.CollectorManagerFactory expects.
-func NewManager(handler container.ContainerHandler, readFile func(string) ([]byte, error), countLimit int) (collector.CollectorManager, error) {
+func NewManager(handler container.ContainerHandler, readFile func(string) ([]byte, error), httpClient *http.Client, countLimit int) (collector.CollectorManager, error) {
 	cm, err := collector.NewCollectorManager()
 	if err != nil {
 		return nil, err
@@ -71,9 +70,9 @@ func NewManager(handler container.ContainerHandler, readFile func(string) ([]byt
 		}
 		var c collector.Collector
 		if strings.HasPrefix(strings.ToLower(name), "prometheus") {
-			c, err = collector.NewPrometheusCollector(name, configFile, countLimit, handler, client)
+			c, err = collector.NewPrometheusCollector(name, configFile, countLimit, handler, httpClient)
 		} else {
-			c, err = collector.NewCollector(name, configFile, countLimit, handler, client)
+			c, err = collector.NewCollector(name, configFile, countLimit, handler, httpClient)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to create collector %q: %v", name, err)

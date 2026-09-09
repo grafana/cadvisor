@@ -17,7 +17,6 @@
 package raw
 
 import (
-	"flag"
 	"fmt"
 	"strings"
 
@@ -31,10 +30,16 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var (
-	DockerOnly             = flag.Bool("docker_only", false, "Only report docker containers in addition to root stats")
-	disableRootCgroupStats = flag.Bool("disable_root_cgroup_stats", false, "Disable collecting root Cgroup stats")
-)
+// Options configures the raw container factory explicitly, instead of via
+// process-global flags, so a caller can run independently configured
+// instances in the same process.
+type Options struct {
+	// Only report docker containers in addition to root stats.
+	DockerOnly bool
+
+	// Disable collecting root Cgroup stats.
+	DisableRootCgroupStats bool
+}
 
 type rawFactory struct {
 	// Factory for machine information.
@@ -54,6 +59,8 @@ type rawFactory struct {
 
 	// List of raw container cgroup path prefix whitelist.
 	rawPrefixWhiteList []string
+
+	options Options
 }
 
 func (f *rawFactory) String() string {
@@ -65,7 +72,7 @@ func (f *rawFactory) NewContainerHandler(name string, metadataEnvAllowList []str
 	if !inHostNamespace {
 		rootFs = "/rootfs"
 	}
-	return newRawContainerHandler(name, f.cgroupSubsystems, f.machineInfoFactory, f.fsInfo, f.watcher, rootFs, f.includedMetrics)
+	return newRawContainerHandler(name, f.cgroupSubsystems, f.machineInfoFactory, f.fsInfo, f.watcher, rootFs, f.includedMetrics, f.options.DisableRootCgroupStats)
 }
 
 // The raw factory can handle any container. If --docker_only is set to true, non-docker containers are ignored except for "/" and those whitelisted by raw_cgroup_prefix_whitelist flag.
@@ -73,7 +80,7 @@ func (f *rawFactory) CanHandleAndAccept(name string) (bool, bool, error) {
 	if name == "/" {
 		return true, true, nil
 	}
-	if *DockerOnly && f.rawPrefixWhiteList[0] == "" {
+	if f.options.DockerOnly && f.rawPrefixWhiteList[0] == "" {
 		return true, false, nil
 	}
 	for _, prefix := range f.rawPrefixWhiteList {
@@ -88,18 +95,18 @@ func (f *rawFactory) DebugInfo() map[string][]string {
 	return common.DebugInfo(f.watcher.GetWatches())
 }
 
-func Register(machineInfoFactory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics map[container.MetricKind]struct{}, rawPrefixWhiteList []string) error {
+func Register(machineInfoFactory info.MachineInfoFactory, fsInfo fs.FsInfo, options Options, includedMetrics map[container.MetricKind]struct{}, rawPrefixWhiteList []string) (container.Factories, error) {
 	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems(includedMetrics)
 	if err != nil {
-		return fmt.Errorf("failed to get cgroup subsystems: %v", err)
+		return nil, fmt.Errorf("failed to get cgroup subsystems: %v", err)
 	}
 	if len(cgroupSubsystems) == 0 {
-		return fmt.Errorf("failed to find supported cgroup mounts for the raw factory")
+		return nil, fmt.Errorf("failed to find supported cgroup mounts for the raw factory")
 	}
 
 	watcher, err := common.NewInotifyWatcher()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	klog.V(1).Infof("Registering Raw factory")
@@ -110,7 +117,9 @@ func Register(machineInfoFactory info.MachineInfoFactory, fsInfo fs.FsInfo, incl
 		watcher:            watcher,
 		includedMetrics:    includedMetrics,
 		rawPrefixWhiteList: rawPrefixWhiteList,
+		options:            options,
 	}
-	container.RegisterContainerHandlerFactory(factory, []watch.ContainerWatchSource{watch.Raw})
-	return nil
+	return container.Factories{
+		watch.Raw: []container.ContainerHandlerFactory{factory},
+	}, nil
 }

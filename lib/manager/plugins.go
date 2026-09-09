@@ -15,6 +15,7 @@
 package manager
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/google/cadvisor/lib/container"
@@ -69,10 +70,13 @@ type CollectorManager interface {
 }
 
 // CollectorManagerFactory builds a per-container collector manager. It receives
-// the container handler (to discover collector configs from its labels) and a
-// readFile func (to read those config files from inside the container). Set by
-// the root binary.
-var CollectorManagerFactory func(handler container.ContainerHandler, readFile func(string) ([]byte, error)) (CollectorManager, error)
+// the container handler (to discover collector configs from its labels), a
+// readFile func (to read those config files from inside the container), and
+// the HTTP client to scrape collector endpoints with (built from the
+// collectorHTTPClient passed to manager.New, so callers such as Alloy can
+// configure it per instance instead of through a process-global setter). Set
+// by the root binary.
+var CollectorManagerFactory func(handler container.ContainerHandler, readFile func(string) ([]byte, error), httpClient *http.Client) (CollectorManager, error)
 
 // CpuLoadReader reads per-container CPU load over netlink (runnable/uninterruptible
 // task counts). The implementation lives in the root binary's utils/cpuload

@@ -16,12 +16,13 @@
 package install
 
 import (
-	// Register all included container providers.
-	_ "github.com/google/cadvisor/container/docker/install"
-	_ "github.com/google/cadvisor/container/podman/install"
-	_ "github.com/google/cadvisor/lib/container/containerd/install"
-	_ "github.com/google/cadvisor/lib/container/crio/install"
-	_ "github.com/google/cadvisor/lib/container/systemd/install"
+	// Container providers are instantiated explicitly (see cmd/cadvisor.go) so
+	// callers can configure them at runtime instead of via global package init.
+	// _ "github.com/google/cadvisor/container/docker/install"
+	// _ "github.com/google/cadvisor/container/podman/install"
+	// _ "github.com/google/cadvisor/lib/container/containerd/install"
+	// _ "github.com/google/cadvisor/lib/container/crio/install"
+	// _ "github.com/google/cadvisor/lib/container/systemd/install"
 
 	// Register all filesystem plugins.
 	_ "github.com/google/cadvisor/fs/devicemapper/install"

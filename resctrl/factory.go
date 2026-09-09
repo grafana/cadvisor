@@ -34,7 +34,7 @@ var pluginsLock sync.Mutex
 var plugins = make(map[string]ResControlManagerPlugin)
 
 type ResControlManagerPlugin interface {
-	NewManager(interval time.Duration, vendorID string, inHostNamespace bool) (ResControlManager, error)
+	NewManager(interval time.Duration, vendorID string, inHostNamespace bool, isDockerOnly bool) (ResControlManager, error)
 }
 
 func RegisterPlugin(name string, plugin ResControlManagerPlugin) error {
@@ -48,11 +48,11 @@ func RegisterPlugin(name string, plugin ResControlManagerPlugin) error {
 	return nil
 }
 
-func NewManager(interval time.Duration, vendorID string, inHostNamespace bool) (ResControlManager, error) {
+func NewManager(interval time.Duration, vendorID string, inHostNamespace bool, isDockerOnly bool) (ResControlManager, error) {
 	pluginsLock.Lock()
 	defer pluginsLock.Unlock()
 	for _, plugin := range plugins {
-		return plugin.NewManager(interval, vendorID, inHostNamespace)
+		return plugin.NewManager(interval, vendorID, inHostNamespace, isDockerOnly)
 	}
 	return nil, fmt.Errorf("unable to find plugins for resctrl manager")
 }

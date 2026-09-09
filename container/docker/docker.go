@@ -38,14 +38,14 @@ func SetTimeout(timeout time.Duration) {
 	dockerTimeout = timeout
 }
 
-func Status() (v1.DockerStatus, error) {
+func (opts *Options) Status() (v1.DockerStatus, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dockerTimeout)
 	defer cancel()
-	return StatusWithContext(ctx)
+	return opts.StatusWithContext(ctx)
 }
 
-func StatusWithContext(ctx context.Context) (v1.DockerStatus, error) {
-	client, err := Client()
+func (opts *Options) StatusWithContext(ctx context.Context) (v1.DockerStatus, error) {
+	client, err := opts.Client()
 	if err != nil {
 		return v1.DockerStatus{}, fmt.Errorf("unable to communicate with docker daemon: %v", err)
 	}
@@ -53,10 +53,10 @@ func StatusWithContext(ctx context.Context) (v1.DockerStatus, error) {
 	if err != nil {
 		return v1.DockerStatus{}, err
 	}
-	return StatusFromDockerInfo(res.Info)
+	return opts.StatusFromDockerInfo(res.Info)
 }
 
-func StatusFromDockerInfo(dockerInfo dockersystem.Info) (v1.DockerStatus, error) {
+func (opts *Options) StatusFromDockerInfo(dockerInfo dockersystem.Info) (v1.DockerStatus, error) {
 	out := v1.DockerStatus{}
 	out.KernelVersion = machine.KernelVersion()
 	out.OS = dockerInfo.OperatingSystem
@@ -70,12 +70,12 @@ func StatusFromDockerInfo(dockerInfo dockersystem.Info) (v1.DockerStatus, error)
 		out.DriverStatus[v[0]] = v[1]
 	}
 	var err error
-	ver, err := VersionString()
+	ver, err := opts.VersionString()
 	if err != nil {
 		return out, err
 	}
 	out.Version = ver
-	ver, err = APIVersionString()
+	ver, err = opts.APIVersionString()
 	if err != nil {
 		return out, err
 	}
@@ -83,8 +83,8 @@ func StatusFromDockerInfo(dockerInfo dockersystem.Info) (v1.DockerStatus, error)
 	return out, nil
 }
 
-func Images() ([]v1.DockerImage, error) {
-	client, err := Client()
+func (opts *Options) Images() ([]v1.DockerImage, error) {
+	client, err := opts.Client()
 	if err != nil {
 		return nil, fmt.Errorf("unable to communicate with docker daemon: %v", err)
 	}
@@ -130,8 +130,8 @@ func ValidateInfo(GetInfo func() (*dockersystem.Info, error), ServerVersion func
 	return info, nil
 }
 
-func Info() (*dockersystem.Info, error) {
-	client, err := Client()
+func (opts *Options) Info() (*dockersystem.Info, error) {
+	client, err := opts.Client()
 	if err != nil {
 		return nil, fmt.Errorf("unable to communicate with docker daemon: %v", err)
 	}
@@ -146,17 +146,17 @@ func Info() (*dockersystem.Info, error) {
 	return &res.Info, nil
 }
 
-func APIVersion() ([]int, error) {
-	ver, err := APIVersionString()
+func (opts *Options) APIVersion() ([]int, error) {
+	ver, err := opts.APIVersionString()
 	if err != nil {
 		return nil, err
 	}
 	return ParseVersion(ver, apiVersionRe, 2)
 }
 
-func VersionString() (string, error) {
+func (opts *Options) VersionString() (string, error) {
 	dockerVersion := "Unknown"
-	client, err := Client()
+	client, err := opts.Client()
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), dockerTimeout)
 		defer cancel()
@@ -168,9 +168,9 @@ func VersionString() (string, error) {
 	return dockerVersion, err
 }
 
-func APIVersionString() (string, error) {
+func (opts *Options) APIVersionString() (string, error) {
 	apiVersion := "Unknown"
-	client, err := Client()
+	client, err := opts.Client()
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), dockerTimeout)
 		defer cancel()

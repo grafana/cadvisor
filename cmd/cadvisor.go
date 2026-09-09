@@ -27,7 +27,13 @@ import (
 
 	"github.com/google/cadvisor/cmd/internal/appmetrics"
 	cadvisorhttp "github.com/google/cadvisor/cmd/internal/http"
+	"github.com/google/cadvisor/container/docker"
+	"github.com/google/cadvisor/container/podman"
 	"github.com/google/cadvisor/lib/container"
+	"github.com/google/cadvisor/lib/container/containerd"
+	"github.com/google/cadvisor/lib/container/crio"
+	"github.com/google/cadvisor/lib/container/raw"
+	"github.com/google/cadvisor/lib/container/systemd"
 	"github.com/google/cadvisor/lib/manager"
 	"github.com/google/cadvisor/lib/metrics"
 	"github.com/google/cadvisor/lib/utils/sysfs"
@@ -79,6 +85,22 @@ var perfEvents = flag.String("perf_events_config", "", "Path to a JSON file cont
 var resctrlInterval = flag.Duration("resctrl_interval", 0, "Resctrl mon groups updating interval. Zero value disables updating mon groups.")
 
 var (
+	// Docker arguments
+	ArgDockerEndpoint = flag.String("docker", "unix:///var/run/docker.sock", "docker endpoint")
+	ArgDockerTLS      = flag.Bool("docker-tls", false, "use TLS to connect to docker")
+	ArgDockerCert     = flag.String("docker-tls-cert", "cert.pem", "path to client certificate")
+	ArgDockerKey      = flag.String("docker-tls-key", "key.pem", "path to private key")
+	ArgDockerCA       = flag.String("docker-tls-ca", "ca.pem", "path to trusted CA")
+
+	// podman argument
+	ArgPodmanEndpoint = flag.String("podman", "unix:///var/run/podman/podman.sock", "podman endpoint")
+
+	// raw arguments
+	DockerOnly             = flag.Bool("docker_only", false, "Only report docker containers in addition to root stats")
+	disableRootCgroupStats = flag.Bool("disable_root_cgroup_stats", false, "Disable collecting root Cgroup stats")
+)
+
+var (
 	// Metrics to be ignored.
 	// Tcp metrics are ignored by default.
 	ignoreMetrics = container.MetricSet{
@@ -126,6 +148,31 @@ func main() {
 	klog.V(1).Infof("enabled metrics: %s", includedMetrics.String())
 	setMaxProcs()
 
+	plugins := map[string]container.Plugin{
+		"containerd": containerd.NewPluginWithOptions(&containerd.Options{
+			ContainerdEndpoint:  *containerd.ArgContainerdEndpoint,
+			ContainerdNamespace: *containerd.ArgContainerdNamespace,
+		}),
+		"docker": docker.NewPluginWithOptions(&docker.Options{
+			DockerEndpoint: *ArgDockerEndpoint,
+			DockerTLS:      *ArgDockerTLS,
+			DockerCert:     *ArgDockerCert,
+			DockerKey:      *ArgDockerKey,
+			DockerCA:       *ArgDockerCA,
+		}),
+		"crio": crio.NewPlugin(),
+		"podman": podman.NewPluginWithOptions(
+			*ArgPodmanEndpoint,
+			&docker.Options{
+				DockerEndpoint: *ArgDockerEndpoint,
+				DockerTLS:      *ArgDockerTLS,
+				DockerCert:     *ArgDockerCert,
+				DockerKey:      *ArgDockerKey,
+				DockerCA:       *ArgDockerCA,
+			}),
+		"systemd": systemd.NewPlugin(),
+	}
+
 	memoryStorage, err := NewMemoryStorage()
 	if err != nil {
 		klog.Fatalf("Failed to initialize storage driver: %s", err)
@@ -133,12 +180,12 @@ func main() {
 
 	sysFs := sysfs.NewRealSysFs()
 
-	// Configure the application-metrics collector HTTP client (mutual TLS when
-	// collector_cert/collector_key are set) before the manager starts creating
-	// containers, which build collectors via the injected factory.
-	appmetrics.SetHTTPClient(*collectorCert, *collectorKey)
+	// The application-metrics collector HTTP client (mutual TLS when
+	// collector_cert/collector_key are set), passed explicitly into the
+	// manager instead of through a process-global setter.
+	collectorHTTPClient := appmetrics.NewHTTPClient(*collectorCert, *collectorKey)
 
-	resourceManager, err := manager.New(memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval)
+	resourceManager, err := manager.New(plugins, memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, collectorHTTPClient, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval, raw.Options{DockerOnly: *DockerOnly, DisableRootCgroupStats: *disableRootCgroupStats})
 	if err != nil {
 		klog.Fatalf("Failed to create a manager: %s", err)
 	}

@@ -15,6 +15,7 @@
 package main
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/google/cadvisor/cmd/internal/appmetrics"
@@ -37,14 +38,14 @@ import (
 func init() {
 	manager.PerfManagerFactory = perf.NewManager
 	manager.ResctrlManagerFactory = func(interval time.Duration, vendorID string, inHostNamespace bool) (stats.ResctrlManager, error) {
-		return resctrl.NewManager(interval, vendorID, inHostNamespace)
+		return resctrl.NewManager(interval, vendorID, inHostNamespace, *DockerOnly)
 	}
 	manager.SummaryReaderFactory = func(spec model.ContainerSpec) (manager.SummaryReader, error) {
 		return summary.New(spec)
 	}
 	manager.ProcessListProvider = processlist.List
-	manager.CollectorManagerFactory = func(handler container.ContainerHandler, readFile func(string) ([]byte, error)) (manager.CollectorManager, error) {
-		return appmetrics.NewManager(handler, readFile, manager.ApplicationMetricsCountLimit())
+	manager.CollectorManagerFactory = func(handler container.ContainerHandler, readFile func(string) ([]byte, error), httpClient *http.Client) (manager.CollectorManager, error) {
+		return appmetrics.NewManager(handler, readFile, httpClient, manager.ApplicationMetricsCountLimit())
 	}
 	manager.CpuLoadReaderFactory = func() (manager.CpuLoadReader, error) {
 		return cpuload.New()

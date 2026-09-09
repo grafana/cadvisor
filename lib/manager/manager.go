@@ -20,6 +20,7 @@ package manager
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"strconv"
@@ -165,7 +166,7 @@ type HousekeepingConfig = struct {
 }
 
 // New takes a memory storage and returns a new manager.
-func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfig HousekeepingConfig, includedMetricsSet container.MetricSet, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration) (Manager, error) {
+func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfig HousekeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration, rawOptions raw.Options) (Manager, error) {
 	if memoryCache == nil {
 		return nil, fmt.Errorf("manager requires memory storage")
 	}
@@ -184,8 +185,11 @@ func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfi
 
 	context := fs.Context{}
 
-	if err := container.InitializeFSContext(&context); err != nil {
-		return nil, err
+	for name, plugin := range plugins {
+		if err := plugin.InitializeFSContext(&context); err != nil {
+			klog.V(5).Infof("Initialization of the %s context failed: %v", name, err)
+			return nil, err
+		}
 	}
 
 	fsInfo, err := fs.NewFsInfo(context)
@@ -204,6 +208,9 @@ func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfi
 	eventsChannel := make(chan watcher.ContainerEvent, 16)
 
 	newManager := &manager{
+		plugins:                               plugins,
+		rawOptions:                            rawOptions,
+		collectorHTTPClient:                   collectorHTTPClient,
 		quitChannels:                          make([]chan error, 0, 2),
 		memoryCache:                           memoryCache,
 		fsInfo:                                fsInfo,
@@ -216,6 +223,7 @@ func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfi
 		disableContainerDiscovery:             HousekeepingConfig.DisableContainerDiscovery,
 		includedMetrics:                       includedMetricsSet,
 		containerWatchers:                     []watcher.ContainerWatcher{},
+		containerFactories:                    container.Factories{},
 		eventsChannel:                         eventsChannel,
 		rawContainerCgroupPathPrefixWhiteList: rawContainerCgroupPathPrefixWhiteList,
 		containerEnvMetadataWhiteList:         containerEnvMetadataWhiteList,
@@ -297,6 +305,9 @@ func (c *containerMap) Range(f func(name namespacedContainerName, data *containe
 }
 
 type manager struct {
+	plugins                   map[string]container.Plugin
+	rawOptions                raw.Options
+	collectorHTTPClient       *http.Client
 	containers                containerMap
 	memoryCache               *memory.InMemoryCache
 	fsInfo                    fs.FsInfo
@@ -312,6 +323,7 @@ type manager struct {
 	disableContainerDiscovery bool
 	includedMetrics           container.MetricSet
 	containerWatchers         []watcher.ContainerWatcher
+	containerFactories        container.Factories
 	eventsChannel             chan watcher.ContainerEvent
 	// List of raw container cgroup path prefix whitelist.
 	rawContainerCgroupPathPrefixWhiteList []string
@@ -332,12 +344,15 @@ type manager struct {
 // Start the container manager.
 func (m *manager) Start() error {
 	if !m.disableContainerDiscovery {
-		m.containerWatchers = container.InitializePlugins(m, m.fsInfo, m.includedMetrics)
+		m.containerFactories = container.InitializePlugins(m, m.plugins, m.fsInfo, m.includedMetrics)
 	}
 
-	err := raw.Register(m, m.fsInfo, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
+	rawFactories, err := raw.Register(m, m.fsInfo, m.rawOptions, m.includedMetrics, m.rawContainerCgroupPathPrefixWhiteList)
 	if err != nil {
 		klog.Errorf("Registration of the raw container factory failed: %v", err)
+	}
+	for watchType, list := range rawFactories {
+		m.containerFactories[watchType] = append(m.containerFactories[watchType], list...)
 	}
 
 	if !m.disableContainerDiscovery {
@@ -349,7 +364,7 @@ func (m *manager) Start() error {
 	}
 
 	// If there are no factories, don't start any housekeeping and serve the information we do have.
-	if !container.HasFactories() {
+	if len(m.containerFactories) == 0 {
 		return nil
 	}
 
@@ -780,7 +795,7 @@ func (m *manager) GetMachineInfo() (*info.MachineInfo, error) {
 }
 
 func (m *manager) DebugInfo() map[string][]string {
-	debugInfo := container.DebugInfo()
+	debugInfo := container.DebugInfo(m.containerFactories)
 
 	// Get unique containers.
 	conts := make(map[*containerData]struct{})
@@ -830,7 +845,7 @@ func (m *manager) createContainer(containerName string, watchSource watcher.Cont
 		return nil
 	}
 
-	handler, accept, err := container.NewContainerHandler(containerName, watchSource, m.containerEnvMetadataWhiteList, m.inHostNamespace)
+	handler, accept, err := container.NewContainerHandler(m.containerFactories, containerName, watchSource, m.containerEnvMetadataWhiteList, m.inHostNamespace)
 	if err != nil {
 		return err
 	}
@@ -881,7 +896,7 @@ func (m *manager) createContainer(containerName string, watchSource watcher.Cont
 	if CollectorManagerFactory != nil {
 		cm, cerr := CollectorManagerFactory(handler, func(p string) ([]byte, error) {
 			return cont.ReadFile(p, m.inHostNamespace)
-		})
+		}, m.collectorHTTPClient)
 		if cerr != nil {
 			klog.V(4).Infof("Failed to set up application-metrics collectors for %q: %v", containerName, cerr)
 		} else if cm != nil {

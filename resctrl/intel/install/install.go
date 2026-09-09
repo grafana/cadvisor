@@ -28,8 +28,8 @@ import (
 type managerplugin struct {
 }
 
-func (m *managerplugin) NewManager(interval time.Duration, vendorID string, inHostNamespace bool) (resctrl.ResControlManager, error) {
-	return intel.NewManager(interval, intel.Setup, vendorID, inHostNamespace)
+func (m *managerplugin) NewManager(interval time.Duration, vendorID string, inHostNamespace bool, isDockerOnly bool) (resctrl.ResControlManager, error) {
+	return intel.NewManager(interval, intel.Setup, vendorID, inHostNamespace, isDockerOnly)
 }
 
 func init() {

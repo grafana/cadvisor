@@ -17,7 +17,6 @@
 package podman
 
 import (
-	"flag"
 	"fmt"
 	"path"
 	"sync"
@@ -38,28 +37,37 @@ const (
 	containerBaseName  = "container"
 )
 
-var (
-	endpointFlag = flag.String("podman", "unix:///var/run/podman/podman.sock", "podman endpoint")
-)
+// Options configures the podman factory explicitly, instead of via
+// process-global flags, so a caller can run independently configured
+// instances in the same process.
+type Options struct {
+	podmanEndpoint string
+	dockerOptions  *docker.Options
 
-var (
-	rootDir     string
 	rootDirOnce sync.Once
-)
+	rootDir     string
+}
 
-func RootDir() string {
-	rootDirOnce.Do(func() {
+func DefaultOptions() *Options {
+	return &Options{
+		podmanEndpoint: "unix:///var/run/podman/podman.sock",
+		dockerOptions:  docker.DefaultOptions(),
+	}
+}
+
+func (opts *Options) RootDir() string {
+	opts.rootDirOnce.Do(func() {
 		for i := 0; i < rootDirRetries; i++ {
-			status, err := Status()
+			status, err := opts.Status()
 			if err == nil && status.RootDir != "" {
-				rootDir = status.RootDir
+				opts.rootDir = status.RootDir
 				break
 			} else {
 				time.Sleep(rootDirRetryPeriod)
 			}
 		}
 	})
-	return rootDir
+	return opts.rootDir
 }
 
 type podmanFactory struct {
@@ -79,6 +87,8 @@ type podmanFactory struct {
 	thinPoolWatcher *devicemapper.ThinPoolWatcher
 
 	zfsWatcher *zfs.ZfsWatcher
+
+	podmanOptions *Options
 }
 
 func (f *podmanFactory) CanHandleAndAccept(name string) (handle bool, accept bool, err error) {
@@ -92,7 +102,7 @@ func (f *podmanFactory) CanHandleAndAccept(name string) (handle bool, accept boo
 
 	id := dockerutil.ContainerNameToId(name)
 
-	ctnr, err := InspectContainer(id)
+	ctnr, err := f.podmanOptions.InspectContainer(id)
 	if err != nil {
 		return false, true, fmt.Errorf("error inspecting container: %v", err)
 	}
@@ -113,5 +123,5 @@ func (f *podmanFactory) String() string {
 func (f *podmanFactory) NewContainerHandler(name string, metadataEnvAllowList []string, inHostNamespace bool) (handler container.ContainerHandler, err error) {
 	return newContainerHandler(name, f.machineInfoFactory, f.fsInfo,
 		f.storageDriver, f.storageDir, f.cgroupSubsystem, inHostNamespace,
-		metadataEnvAllowList, f.metrics, f.thinPoolName, f.thinPoolWatcher, f.zfsWatcher)
+		metadataEnvAllowList, f.metrics, f.thinPoolName, f.thinPoolWatcher, f.zfsWatcher, f.podmanOptions)
 }

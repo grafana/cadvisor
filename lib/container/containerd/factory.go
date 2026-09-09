@@ -23,6 +23,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 
 	"k8s.io/klog/v2"
 
@@ -33,10 +34,17 @@ import (
 	"github.com/google/cadvisor/lib/watcher"
 )
 
+var containerdEnvMetadataWhiteList = flag.String("containerd_env_metadata_whitelist", "", "DEPRECATED: this flag will be removed, please use `env_metadata_whitelist`. A comma-separated list of environment variable keys matched with specified prefix that needs to be collected for containerd containers")
+
+// ArgContainerdEndpoint and ArgContainerdNamespace are registered on the
+// global flag set only so the name and default remain available to external
+// consumers (notably the kubelet, see lib/cadvisorflags) that look them up by
+// name. Nothing in this package reads them: the actual endpoint/namespace
+// used at runtime comes from the explicit Options passed to NewPluginWithOptions,
+// so callers such as Alloy can configure independent instances without
+// touching process-global flags.
 var ArgContainerdEndpoint = flag.String("containerd", "/run/containerd/containerd.sock", "containerd endpoint")
 var ArgContainerdNamespace = flag.String("containerd-namespace", "k8s.io", "containerd namespace")
-
-var containerdEnvMetadataWhiteList = flag.String("containerd_env_metadata_whitelist", "", "DEPRECATED: this flag will be removed, please use `env_metadata_whitelist`. A comma-separated list of environment variable keys matched with specified prefix that needs to be collected for containerd containers")
 
 // The namespace under which containerd aliases are unique.
 const k8sContainerdNamespace = "containerd"
@@ -44,6 +52,25 @@ const k8sContainerdNamespace = "containerd"
 // Regexp that identifies containerd cgroups, containers started with
 // --cgroup-parent have another prefix than 'containerd'
 var containerdCgroupRegexp = regexp.MustCompile(`([a-z0-9]{64})`)
+
+// Options configures the containerd factory explicitly, instead of via
+// process-global flags, so a caller can run independently configured
+// instances in the same process.
+type Options struct {
+	ContainerdEndpoint  string
+	ContainerdNamespace string
+
+	once          sync.Once
+	ctrdClient    ContainerdClient
+	ctrdClientErr error
+}
+
+func DefaultOptions() *Options {
+	return &Options{
+		ContainerdEndpoint:  "/run/containerd/containerd.sock",
+		ContainerdNamespace: "k8s.io",
+	}
+}
 
 type containerdFactory struct {
 	machineInfoFactory info.MachineInfoFactory
@@ -54,6 +81,7 @@ type containerdFactory struct {
 	// Information about mounted filesystems.
 	fsInfo          fs.FsInfo
 	includedMetrics container.MetricSet
+	options         *Options
 }
 
 func (f *containerdFactory) String() string {
@@ -61,7 +89,7 @@ func (f *containerdFactory) String() string {
 }
 
 func (f *containerdFactory) NewContainerHandler(name string, metadataEnvAllowList []string, inHostNamespace bool) (handler container.ContainerHandler, err error) {
-	client, err := Client(*ArgContainerdEndpoint, *ArgContainerdNamespace)
+	client, err := f.options.Client(f.options.ContainerdEndpoint, f.options.ContainerdNamespace)
 	if err != nil {
 		return
 	}
@@ -129,20 +157,20 @@ func (f *containerdFactory) DebugInfo() map[string][]string {
 }
 
 // Register root container before running this function!
-func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) error {
-	client, err := Client(*ArgContainerdEndpoint, *ArgContainerdNamespace)
+func Register(opts *Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
+	client, err := opts.Client(opts.ContainerdEndpoint, opts.ContainerdNamespace)
 	if err != nil {
-		return fmt.Errorf("unable to create containerd client: %v", err)
+		return nil, fmt.Errorf("unable to create containerd client: %v", err)
 	}
 
 	containerdVersion, err := client.Version(context.Background())
 	if err != nil {
-		return fmt.Errorf("failed to fetch containerd client version: %v", err)
+		return nil, fmt.Errorf("failed to fetch containerd client version: %v", err)
 	}
 
 	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems(includedMetrics)
 	if err != nil {
-		return fmt.Errorf("failed to get cgroup subsystems: %v", err)
+		return nil, fmt.Errorf("failed to get cgroup subsystems: %v", err)
 	}
 
 	klog.V(1).Infof("Registering containerd factory")
@@ -153,8 +181,10 @@ func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics
 		machineInfoFactory: factory,
 		version:            containerdVersion,
 		includedMetrics:    includedMetrics,
+		options:            opts,
 	}
 
-	container.RegisterContainerHandlerFactory(f, []watcher.ContainerWatchSource{watcher.Raw})
-	return nil
+	return container.Factories{
+		watcher.Raw: []container.ContainerHandlerFactory{f},
+	}, nil
 }
