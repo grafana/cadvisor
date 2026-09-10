@@ -15,44 +15,10 @@
 package resctrl
 
 import (
-	"fmt"
-	"sync"
-	"time"
-
 	"github.com/google/cadvisor/lib/stats"
-
-	"k8s.io/klog/v2"
 )
 
 type ResControlManager interface {
 	Destroy()
 	GetCollector(containerName string, getContainerPids func() ([]string, error), numberOfNUMANodes int) (stats.Collector, error)
-}
-
-// All registered auth provider plugins.
-var pluginsLock sync.Mutex
-var plugins = make(map[string]ResControlManagerPlugin)
-
-type ResControlManagerPlugin interface {
-	NewManager(interval time.Duration, vendorID string, inHostNamespace bool, isDockerOnly bool) (ResControlManager, error)
-}
-
-func RegisterPlugin(name string, plugin ResControlManagerPlugin) error {
-	pluginsLock.Lock()
-	defer pluginsLock.Unlock()
-	if _, found := plugins[name]; found {
-		return fmt.Errorf("ResControlManagerPlugin %q was registered twice", name)
-	}
-	klog.V(4).Infof("Registered ResControlManagerPlugin %q", name)
-	plugins[name] = plugin
-	return nil
-}
-
-func NewManager(interval time.Duration, vendorID string, inHostNamespace bool, isDockerOnly bool) (ResControlManager, error) {
-	pluginsLock.Lock()
-	defer pluginsLock.Unlock()
-	for _, plugin := range plugins {
-		return plugin.NewManager(interval, vendorID, inHostNamespace, isDockerOnly)
-	}
-	return nil, fmt.Errorf("unable to find plugins for resctrl manager")
 }

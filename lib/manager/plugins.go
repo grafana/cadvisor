@@ -37,7 +37,7 @@ var (
 	PerfManagerFactory func(configFile string, topology []info.Node) (stats.Manager, error)
 
 	// ResctrlManagerFactory builds the resctrl stats manager. Set by the root
-	// binary to resctrl.NewManager.
+	// binary to a closure over resctrl/intel.NewManager.
 	ResctrlManagerFactory func(interval time.Duration, vendorID string, inHostNamespace bool) (stats.ResctrlManager, error)
 )
 

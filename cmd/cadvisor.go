@@ -55,8 +55,8 @@ import (
 	_ "github.com/google/cadvisor/utils/cloudinfo/azure"
 	_ "github.com/google/cadvisor/utils/cloudinfo/gce"
 
-	// Register resctrl plugin
-	_ "github.com/google/cadvisor/resctrl/intel/install"
+	// The resctrl plugin is wired explicitly in cmd/plugins.go's init()
+	// (manager.ResctrlManagerFactory), not via a global registry.
 
 	"k8s.io/klog/v2"
 )

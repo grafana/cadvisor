@@ -25,7 +25,7 @@ import (
 	model "github.com/google/cadvisor/lib/model"
 	"github.com/google/cadvisor/lib/stats"
 	"github.com/google/cadvisor/perf"
-	"github.com/google/cadvisor/resctrl"
+	"github.com/google/cadvisor/resctrl/intel"
 	"github.com/google/cadvisor/summary"
 	"github.com/google/cadvisor/utils/cpuload"
 )
@@ -38,7 +38,7 @@ import (
 func init() {
 	manager.PerfManagerFactory = perf.NewManager
 	manager.ResctrlManagerFactory = func(interval time.Duration, vendorID string, inHostNamespace bool) (stats.ResctrlManager, error) {
-		return resctrl.NewManager(interval, vendorID, inHostNamespace, *DockerOnly)
+		return intel.NewManager(interval, intel.Setup, vendorID, inHostNamespace, *DockerOnly)
 	}
 	manager.SummaryReaderFactory = func(spec model.ContainerSpec) (manager.SummaryReader, error) {
 		return summary.New(spec)
