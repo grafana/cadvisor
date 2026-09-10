@@ -13,10 +13,13 @@
 // limitations under the License.
 
 // Package processlist implements the v2 /ps endpoint's process listing for the
-// full cAdvisor binary. It is injected into the lean library manager via
-// manager.ProcessListProvider (the kubelet leaves that nil and lists no
-// processes). The logic — shelling out to `ps` and filtering by the container's
-// cgroup — lives here rather than in the library to keep the library lean.
+// full cAdvisor binary, or any other embedder of the lib/manager library. It
+// is wired into manager.ProcessListProvider (the kubelet leaves that nil and
+// lists no processes); cmd/plugins.go does this for the cAdvisor binary
+// (manager.ProcessListProvider = processlist.List), and any other embedder
+// can set it the same way. The logic — shelling out to `ps` and filtering by
+// the container's cgroup — lives here rather than in the library to keep the
+// library lean.
 package processlist
 
 import (

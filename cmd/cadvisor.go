@@ -25,7 +25,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/google/cadvisor/cmd/internal/appmetrics"
+	"github.com/google/cadvisor/appmetrics"
 	cadvisorhttp "github.com/google/cadvisor/cmd/internal/http"
 	"github.com/google/cadvisor/container/docker"
 	"github.com/google/cadvisor/container/podman"
