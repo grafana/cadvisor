@@ -24,12 +24,13 @@ import (
 	// _ "github.com/google/cadvisor/lib/container/crio/install"
 	// _ "github.com/google/cadvisor/lib/container/systemd/install"
 
-	// Register all filesystem plugins.
-	_ "github.com/google/cadvisor/fs/devicemapper/install"
-	_ "github.com/google/cadvisor/lib/fs/btrfs/install"
-	_ "github.com/google/cadvisor/lib/fs/nfs/install"
-	_ "github.com/google/cadvisor/lib/fs/overlay/install"
-	_ "github.com/google/cadvisor/lib/fs/tmpfs/install"
-	_ "github.com/google/cadvisor/lib/fs/vfs/install"
-	_ "github.com/google/cadvisor/lib/fs/zfs/install"
+	// Filesystem plugins are instantiated explicitly too (see cmd/cadvisor.go
+	// and fs.Context.Plugins) instead of via global package init.
+	// _ "github.com/google/cadvisor/fs/devicemapper/install"
+	// _ "github.com/google/cadvisor/lib/fs/btrfs/install"
+	// _ "github.com/google/cadvisor/lib/fs/nfs/install"
+	// _ "github.com/google/cadvisor/lib/fs/overlay/install"
+	// _ "github.com/google/cadvisor/lib/fs/tmpfs/install"
+	// _ "github.com/google/cadvisor/lib/fs/vfs/install"
+	// _ "github.com/google/cadvisor/lib/fs/zfs/install"
 )

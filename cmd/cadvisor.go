@@ -29,11 +29,19 @@ import (
 	cadvisorhttp "github.com/google/cadvisor/cmd/internal/http"
 	"github.com/google/cadvisor/container/docker"
 	"github.com/google/cadvisor/container/podman"
+	"github.com/google/cadvisor/fs/devicemapper"
 	"github.com/google/cadvisor/lib/container"
 	"github.com/google/cadvisor/lib/container/containerd"
 	"github.com/google/cadvisor/lib/container/crio"
 	"github.com/google/cadvisor/lib/container/raw"
 	"github.com/google/cadvisor/lib/container/systemd"
+	"github.com/google/cadvisor/lib/fs"
+	"github.com/google/cadvisor/lib/fs/btrfs"
+	"github.com/google/cadvisor/lib/fs/nfs"
+	"github.com/google/cadvisor/lib/fs/overlay"
+	"github.com/google/cadvisor/lib/fs/tmpfs"
+	"github.com/google/cadvisor/lib/fs/vfs"
+	"github.com/google/cadvisor/lib/fs/zfs"
 	"github.com/google/cadvisor/lib/manager"
 	"github.com/google/cadvisor/lib/metrics"
 	"github.com/google/cadvisor/lib/utils/sysfs"
@@ -173,6 +181,16 @@ func main() {
 		"systemd": systemd.NewPlugin(),
 	}
 
+	fsPlugins := map[string]fs.FsPlugin{
+		"btrfs":        btrfs.NewPlugin(),
+		"devicemapper": devicemapper.NewPlugin(),
+		"nfs":          nfs.NewPlugin(),
+		"overlay":      overlay.NewPlugin(),
+		"tmpfs":        tmpfs.NewPlugin(),
+		"vfs":          vfs.NewPlugin(),
+		"zfs":          zfs.NewPlugin(),
+	}
+
 	memoryStorage, err := NewMemoryStorage()
 	if err != nil {
 		klog.Fatalf("Failed to initialize storage driver: %s", err)
@@ -185,7 +203,7 @@ func main() {
 	// manager instead of through a process-global setter.
 	collectorHTTPClient := appmetrics.NewHTTPClient(*collectorCert, *collectorKey)
 
-	resourceManager, err := manager.New(plugins, memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, collectorHTTPClient, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval, raw.Options{DockerOnly: *DockerOnly, DisableRootCgroupStats: *disableRootCgroupStats})
+	resourceManager, err := manager.New(plugins, fsPlugins, memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, collectorHTTPClient, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval, raw.Options{DockerOnly: *DockerOnly, DisableRootCgroupStats: *disableRootCgroupStats})
 	if err != nil {
 		klog.Fatalf("Failed to create a manager: %s", err)
 	}

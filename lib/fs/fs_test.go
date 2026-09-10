@@ -49,11 +49,11 @@ func (p *testPlugin) ProcessMount(mnt *mount.Info) (bool, *mount.Info, error) {
 	return true, mnt, nil
 }
 
-func init() {
-	// Register test plugins for processMounts tests
-
+// testPlugins is the explicit plugin set used by the processMounts tests,
+// standing in for what Context.Plugins would carry in production.
+var testPlugins = map[string]FsPlugin{
 	// VFS plugin - handles ext*, xfs
-	RegisterPlugin("test-vfs", &testPlugin{
+	"test-vfs": &testPlugin{
 		name: "test-vfs",
 		canHandle: func(fsType string) bool {
 			if strings.HasPrefix(fsType, "ext") {
@@ -62,24 +62,24 @@ func init() {
 			return fsType == "xfs"
 		},
 		priority: 0,
-	})
+	},
 
 	// ZFS plugin
-	RegisterPlugin("test-zfs", &testPlugin{
+	"test-zfs": &testPlugin{
 		name:      "test-zfs",
 		canHandle: func(fsType string) bool { return fsType == "zfs" },
 		priority:  100,
-	})
+	},
 
 	// Btrfs plugin
-	RegisterPlugin("test-btrfs", &testPlugin{
+	"test-btrfs": &testPlugin{
 		name:      "test-btrfs",
 		canHandle: func(fsType string) bool { return fsType == "btrfs" },
 		priority:  100,
-	})
+	},
 
 	// Overlay plugin - makes source unique with major/minor
-	RegisterPlugin("test-overlay", &testPlugin{
+	"test-overlay": &testPlugin{
 		name:      "test-overlay",
 		canHandle: func(fsType string) bool { return fsType == "overlay" },
 		priority:  100,
@@ -88,17 +88,17 @@ func init() {
 			correctedMnt.Source = fmt.Sprintf("%s_%d-%d", mnt.Source, mnt.Major, mnt.Minor)
 			return true, &correctedMnt, nil
 		},
-	})
+	},
 
 	// NFS plugin
-	RegisterPlugin("test-nfs", &testPlugin{
+	"test-nfs": &testPlugin{
 		name:      "test-nfs",
 		canHandle: func(fsType string) bool { return strings.HasPrefix(fsType, "nfs") },
 		priority:  50,
-	})
+	},
 
 	// tmpfs plugin - uses mountpoint as source
-	RegisterPlugin("test-tmpfs", &testPlugin{
+	"test-tmpfs": &testPlugin{
 		name:      "test-tmpfs",
 		canHandle: func(fsType string) bool { return fsType == "tmpfs" },
 		priority:  100,
@@ -107,7 +107,7 @@ func init() {
 			correctedMnt.Source = mnt.Mountpoint
 			return true, &correctedMnt, nil
 		},
-	})
+	},
 }
 
 func TestMountInfoFromDir(t *testing.T) {
@@ -551,7 +551,7 @@ func TestProcessMounts(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		actual := processMounts(test.mounts, test.excludedPrefixes)
+		actual := processMounts(test.mounts, test.excludedPrefixes, testPlugins)
 		if !reflect.DeepEqual(test.expected, actual) {
 			t.Errorf("%s: expected %#v, got %#v", test.name, test.expected, actual)
 		}

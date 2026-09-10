@@ -83,6 +83,9 @@ type RealFsInfo struct {
 	mounts map[string]mount.Info
 	// fsUUIDToDeviceName is a map from the filesystem UUID to its device name.
 	fsUUIDToDeviceName map[string]string
+	// plugins is the set of filesystem plugins used to collect stats,
+	// keyed by name (see Context.Plugins).
+	plugins map[string]FsPlugin
 }
 
 func NewFsInfo(context Context) (FsInfo, error) {
@@ -103,10 +106,11 @@ func NewFsInfo(context Context) (FsInfo, error) {
 	}
 
 	fsInfo := &RealFsInfo{
-		partitions:         processMounts(mounts, nil),
+		partitions:         processMounts(mounts, nil, context.Plugins),
 		labels:             make(map[string]string),
 		mounts:             make(map[string]mount.Info),
 		fsUUIDToDeviceName: fsUUIDToDeviceName,
+		plugins:            context.Plugins,
 	}
 
 	for _, mnt := range mounts {
@@ -154,12 +158,12 @@ func getFsUUIDToDeviceNameMap() (map[string]string, error) {
 	return fsUUIDToDeviceName, nil
 }
 
-func processMounts(mounts []*mount.Info, excludedMountpointPrefixes []string) map[string]partition {
+func processMounts(mounts []*mount.Info, excludedMountpointPrefixes []string, plugins map[string]FsPlugin) map[string]partition {
 	partitions := make(map[string]partition)
 
 	for _, mnt := range mounts {
 		// Use plugin system to determine if filesystem is supported
-		plugin := GetPluginForFsType(mnt.FSType)
+		plugin := SelectPlugin(plugins, mnt.FSType)
 		if plugin == nil {
 			continue
 		}
@@ -354,7 +358,7 @@ func (i *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, error
 			)
 
 			// Use plugin system to get filesystem stats
-			plugin := GetPluginForFsType(partition.fsType)
+			plugin := SelectPlugin(i.plugins, partition.fsType)
 			if plugin == nil {
 				klog.V(4).Infof("no plugin found for filesystem type: %v", partition.fsType)
 				continue
@@ -402,7 +406,7 @@ func (i *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, error
 			if statsErr != nil {
 				// Handle fallback to VFS for plugins that request it
 				if errors.Is(statsErr, ErrFallbackToVFS) {
-					vfsPlugin := GetPluginForFsType("ext4") // VFS handles ext*
+					vfsPlugin := SelectPlugin(i.plugins, "ext4") // VFS handles ext*
 					if vfsPlugin != nil {
 						stats, statsErr = vfsPlugin.GetStats(device, partInfo)
 					}

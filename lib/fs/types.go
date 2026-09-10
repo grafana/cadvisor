@@ -23,6 +23,11 @@ type Context struct {
 	Docker DockerContext
 	Crio   CrioContext
 	Podman PodmanContext
+
+	// Plugins is the set of filesystem plugins NewFsInfo should use to
+	// collect stats, keyed by name. Passed explicitly (see manager.New)
+	// instead of read from a package-global registry.
+	Plugins map[string]FsPlugin
 }
 
 type DockerContext struct {

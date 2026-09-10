@@ -166,7 +166,7 @@ type HousekeepingConfig = struct {
 }
 
 // New takes a memory storage and returns a new manager.
-func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfig HousekeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration, rawOptions raw.Options) (Manager, error) {
+func New(plugins map[string]container.Plugin, fsPlugins map[string]fs.FsPlugin, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfig HousekeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration, rawOptions raw.Options) (Manager, error) {
 	if memoryCache == nil {
 		return nil, fmt.Errorf("manager requires memory storage")
 	}
@@ -183,7 +183,7 @@ func New(plugins map[string]container.Plugin, memoryCache *memory.InMemoryCache,
 		klog.V(2).Infof("cAdvisor running in container: %q", selfContainer)
 	}
 
-	context := fs.Context{}
+	context := fs.Context{Plugins: fsPlugins}
 
 	for name, plugin := range plugins {
 		if err := plugin.InitializeFSContext(&context); err != nil {

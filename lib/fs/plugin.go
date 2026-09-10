@@ -16,11 +16,8 @@ package fs
 
 import (
 	"errors"
-	"fmt"
-	"sync"
 
 	mount "github.com/moby/sys/mountinfo"
-	"k8s.io/klog/v2"
 )
 
 // FsPlugin provides filesystem-specific statistics collection.
@@ -79,31 +76,16 @@ type FsStats struct {
 // this filesystem and VFS should be used instead.
 var ErrFallbackToVFS = errors.New("fallback to VFS")
 
-// Plugin registry (init-time registration only).
-var (
-	pluginsLock sync.RWMutex
-	plugins     = make(map[string]FsPlugin)
-)
-
-// RegisterPlugin registers a filesystem plugin.
-// This should be called from init() functions.
-func RegisterPlugin(name string, plugin FsPlugin) error {
-	pluginsLock.Lock()
-	defer pluginsLock.Unlock()
-	if _, found := plugins[name]; found {
-		return fmt.Errorf("FsPlugin %q was registered twice", name)
-	}
-	klog.V(4).Infof("Registered FsPlugin %q", name)
-	plugins[name] = plugin
-	return nil
-}
-
-// GetPluginForFsType returns the appropriate plugin for the filesystem type.
-// Returns nil if no plugin can handle the filesystem type.
-func GetPluginForFsType(fsType string) FsPlugin {
-	pluginsLock.RLock()
-	defer pluginsLock.RUnlock()
-
+// SelectPlugin returns the plugin from the given set that should handle
+// fsType, preferring the highest-priority match (so a specific plugin like
+// zfs or btrfs can override a generic one like vfs). Returns nil if none of
+// the plugins can handle it.
+//
+// The set is passed in explicitly (via Context.Plugins, see NewFsInfo)
+// instead of read from a package-global registry, so a caller such as Alloy
+// can run independently configured instances in the same process without
+// mutating shared state.
+func SelectPlugin(plugins map[string]FsPlugin, fsType string) FsPlugin {
 	var best FsPlugin
 	for _, p := range plugins {
 		if p.CanHandle(fsType) {
