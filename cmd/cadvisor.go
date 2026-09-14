@@ -203,7 +203,17 @@ func main() {
 	// manager instead of through a process-global setter.
 	collectorHTTPClient := appmetrics.NewHTTPClient(*collectorCert, *collectorKey)
 
-	resourceManager, err := manager.New(plugins, fsPlugins, memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, collectorHTTPClient, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval, raw.Options{DockerOnly: *DockerOnly, DisableRootCgroupStats: *disableRootCgroupStats})
+	cfg := manager.Config{
+		Plugins:   plugins,
+		FsPlugins: fsPlugins,
+		RawOptions: raw.Options{
+			DockerOnly:             *DockerOnly,
+			DisableRootCgroupStats: *disableRootCgroupStats,
+		},
+		// Factories left zero-value: cmd/plugins.go's init() already wires the
+		// package-level defaults (PerfManagerFactory, etc.) this binary uses.
+	}
+	resourceManager, err := manager.New(cfg, memoryStorage, sysFs, manager.HousekeepingConfigFlags, includedMetrics, collectorHTTPClient, strings.Split(*rawCgroupPrefixWhiteList, ","), strings.Split(*envMetadataWhiteList, ","), *perfEvents, *resctrlInterval)
 	if err != nil {
 		klog.Fatalf("Failed to create a manager: %s", err)
 	}

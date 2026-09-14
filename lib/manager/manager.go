@@ -165,8 +165,25 @@ type HousekeepingConfig = struct {
 	DisableContainerDiscovery bool
 }
 
+// Config bundles the per-instance overrides New() needs beyond the plain
+// value arguments: the container/filesystem plugin sets, raw options, and
+// (see Factories) the injection seams that would otherwise come from
+// lib/manager/plugins.go's package-level vars. Zero-value fields fall back to
+// their usual default (no plugins, zero-value raw.Options, the package
+// globals for Factories), so an embedder only sets what it needs to override.
+type Config struct {
+	Plugins    map[string]container.Plugin
+	FsPlugins  map[string]fs.FsPlugin
+	RawOptions raw.Options
+	Factories  Factories
+}
+
 // New takes a memory storage and returns a new manager.
-func New(plugins map[string]container.Plugin, fsPlugins map[string]fs.FsPlugin, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfig HousekeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration, rawOptions raw.Options) (Manager, error) {
+func New(cfg Config, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, HousekeepingConfig HousekeepingConfig, includedMetricsSet container.MetricSet, collectorHTTPClient *http.Client, rawContainerCgroupPathPrefixWhiteList, containerEnvMetadataWhiteList []string, perfEventsFile string, resctrlInterval time.Duration) (Manager, error) {
+	plugins := cfg.Plugins
+	fsPlugins := cfg.FsPlugins
+	rawOptions := cfg.RawOptions
+
 	if memoryCache == nil {
 		return nil, fmt.Errorf("manager requires memory storage")
 	}
@@ -207,10 +224,35 @@ func New(plugins map[string]container.Plugin, fsPlugins map[string]fs.FsPlugin, 
 	// Register for new subcontainers.
 	eventsChannel := make(chan watcher.ContainerEvent, 16)
 
+	// Resolve the injection seams for this instance: an explicit Config.Factories
+	// field wins, otherwise fall back to the package-level default. Resolving
+	// once here, rather than reading the globals on every use, is what lets a
+	// caller reconfigure/reload without racing an already-running manager.
+	summaryReaderFactory := cfg.Factories.Summary
+	if summaryReaderFactory == nil {
+		summaryReaderFactory = SummaryReaderFactory
+	}
+	processListProvider := cfg.Factories.ProcessList
+	if processListProvider == nil {
+		processListProvider = ProcessListProvider
+	}
+	collectorManagerFactory := cfg.Factories.Collector
+	if collectorManagerFactory == nil {
+		collectorManagerFactory = CollectorManagerFactory
+	}
+	cpuLoadReaderFactory := cfg.Factories.CpuLoad
+	if cpuLoadReaderFactory == nil {
+		cpuLoadReaderFactory = CpuLoadReaderFactory
+	}
+
 	newManager := &manager{
 		plugins:                               plugins,
 		rawOptions:                            rawOptions,
 		collectorHTTPClient:                   collectorHTTPClient,
+		summaryReaderFactory:                  summaryReaderFactory,
+		processListProvider:                   processListProvider,
+		collectorManagerFactory:               collectorManagerFactory,
+		cpuLoadReaderFactory:                  cpuLoadReaderFactory,
 		quitChannels:                          make([]chan error, 0, 2),
 		memoryCache:                           memoryCache,
 		fsInfo:                                fsInfo,
@@ -238,16 +280,25 @@ func New(plugins map[string]container.Plugin, fsPlugins map[string]fs.FsPlugin, 
 
 	// Collector managers default to Noop; the full cAdvisor binary registers
 	// real perf/resctrl factories via plugins.go. The kubelet leaves them nil.
+	perfManagerFactory := cfg.Factories.Perf
+	if perfManagerFactory == nil {
+		perfManagerFactory = PerfManagerFactory
+	}
+	resctrlManagerFactory := cfg.Factories.Resctrl
+	if resctrlManagerFactory == nil {
+		resctrlManagerFactory = ResctrlManagerFactory
+	}
+
 	newManager.perfManager = &stats.NoopManager{}
-	if PerfManagerFactory != nil {
-		newManager.perfManager, err = PerfManagerFactory(perfEventsFile, machineInfo.Topology)
+	if perfManagerFactory != nil {
+		newManager.perfManager, err = perfManagerFactory(perfEventsFile, machineInfo.Topology)
 		if err != nil {
 			return nil, err
 		}
 	}
 	newManager.resctrlManager = &stats.NoopResctrlManager{}
-	if ResctrlManagerFactory != nil {
-		if rm, rerr := ResctrlManagerFactory(resctrlInterval, machineInfo.CPUVendorID, inHostNamespace); rerr != nil {
+	if resctrlManagerFactory != nil {
+		if rm, rerr := resctrlManagerFactory(resctrlInterval, machineInfo.CPUVendorID, inHostNamespace); rerr != nil {
 			klog.V(4).Infof("Cannot gather resctrl metrics: %v", rerr)
 		} else {
 			newManager.resctrlManager = rm
@@ -305,9 +356,17 @@ func (c *containerMap) Range(f func(name namespacedContainerName, data *containe
 }
 
 type manager struct {
-	plugins                   map[string]container.Plugin
-	rawOptions                raw.Options
-	collectorHTTPClient       *http.Client
+	plugins             map[string]container.Plugin
+	rawOptions          raw.Options
+	collectorHTTPClient *http.Client
+	// Injection seams resolved once at New() time (Config.Factories override,
+	// else the lib/manager/plugins.go package-level default) and never
+	// re-read, so reassigning the globals later can't race an already-running
+	// manager. See the Factories doc comment.
+	summaryReaderFactory      func(spec info.ContainerSpec) (SummaryReader, error)
+	processListProvider       func(containerName string, isRoot bool, cadvisorContainer string, inHostNamespace bool) ([]info.ProcessInfo, error)
+	collectorManagerFactory   func(handler container.ContainerHandler, readFile func(string) ([]byte, error), httpClient *http.Client) (CollectorManager, error)
+	cpuLoadReaderFactory      func() (CpuLoadReader, error)
 	containers                containerMap
 	memoryCache               *memory.InMemoryCache
 	fsInfo                    fs.FsInfo
@@ -854,7 +913,7 @@ func (m *manager) createContainer(containerName string, watchSource watcher.Cont
 		klog.V(4).Infof("ignoring container %q", containerName)
 		return nil
 	}
-	cont, err := newContainerData(containerName, m.memoryCache, handler, m.maxHousekeepingInterval, m.allowDynamicHousekeeping, clock.RealClock{})
+	cont, err := newContainerData(containerName, m.memoryCache, handler, m.maxHousekeepingInterval, m.allowDynamicHousekeeping, clock.RealClock{}, m.cpuLoadReaderFactory, m.summaryReaderFactory)
 	if err != nil {
 		return err
 	}
@@ -893,8 +952,8 @@ func (m *manager) createContainer(containerName string, watchSource watcher.Cont
 	// Application-metrics collectors (binary-only; the kubelet leaves the factory
 	// nil). The readFile closure lets the collector factory read config files
 	// (declared via container labels) from inside the container.
-	if CollectorManagerFactory != nil {
-		cm, cerr := CollectorManagerFactory(handler, func(p string) ([]byte, error) {
+	if m.collectorManagerFactory != nil {
+		cm, cerr := m.collectorManagerFactory(handler, func(p string) ([]byte, error) {
 			return cont.ReadFile(p, m.inHostNamespace)
 		}, m.collectorHTTPClient)
 		if cerr != nil {

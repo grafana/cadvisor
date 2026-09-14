@@ -209,7 +209,7 @@ func (cd *containerData) GetInfo(shouldUpdateSubcontainers bool) (*containerInfo
 	return &cInfo, nil
 }
 
-func newContainerData(containerName string, memoryCache *memory.InMemoryCache, handler container.ContainerHandler, maxHousekeepingInterval time.Duration, allowDynamicHousekeeping bool, clock clock.Clock) (*containerData, error) {
+func newContainerData(containerName string, memoryCache *memory.InMemoryCache, handler container.ContainerHandler, maxHousekeepingInterval time.Duration, allowDynamicHousekeeping bool, clock clock.Clock, cpuLoadReaderFactory func() (CpuLoadReader, error), summaryReaderFactory func(spec info.ContainerSpec) (SummaryReader, error)) (*containerData, error) {
 	if memoryCache == nil {
 		return nil, fmt.Errorf("nil memory storage")
 	}
@@ -242,8 +242,8 @@ func newContainerData(containerName string, memoryCache *memory.InMemoryCache, h
 
 	cont.loadDecay = math.Exp(float64(-cont.housekeepingInterval.Seconds() / 10))
 
-	if *enableLoadReader && CpuLoadReaderFactory != nil {
-		loadReader, err := CpuLoadReaderFactory()
+	if *enableLoadReader && cpuLoadReaderFactory != nil {
+		loadReader, err := cpuLoadReaderFactory()
 		if err != nil {
 			klog.Warningf("Could not initialize cpu load reader for %q: %s", ref.Name, err)
 		} else {
@@ -258,8 +258,8 @@ func newContainerData(containerName string, memoryCache *memory.InMemoryCache, h
 
 	// Derived-stats summary reader (binary-only; nil for the kubelet). Failure to
 	// create it is non-fatal — the container is still tracked.
-	if SummaryReaderFactory != nil {
-		summaryReader, serr := SummaryReaderFactory(cont.info.Spec)
+	if summaryReaderFactory != nil {
+		summaryReader, serr := summaryReaderFactory(cont.info.Spec)
 		if serr != nil {
 			klog.V(5).Infof("Failed to create summary reader for %q: %v", ref.Name, serr)
 		} else {

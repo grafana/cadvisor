@@ -51,7 +51,7 @@ func setupContainerData(t *testing.T, spec info.ContainerSpec) (*containerData, 
 	)
 	memoryCache := memory.New(60, nil)
 	fakeClock := clock.NewFakeClock(time.Now())
-	ret, err := newContainerData(containerName, memoryCache, mockHandler, 60*time.Second, true, fakeClock)
+	ret, err := newContainerData(containerName, memoryCache, mockHandler, 60*time.Second, true, fakeClock, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

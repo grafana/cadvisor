@@ -31,6 +31,16 @@ import (
 // case) the manager falls back to a Noop manager, so no stats are collected for
 // that controller. This keeps github.com/google/cadvisor/lib lean while letting
 // the binary remain fully functional.
+//
+// These package-level vars are read exactly once, by New(), and their value
+// at that instant is captured onto the manager instance — never re-read for
+// the life of the manager. That matters for an embedder (e.g. Alloy) that
+// reconfigures and re-inits on every reload: reassigning these globals would
+// otherwise race with, and eventually clobber, any already-running manager's
+// behavior. Such a caller should instead set Config.Factories on the New()
+// call for each manager instance and never touch these vars at all; the
+// globals remain only as the default the full cAdvisor binary's cmd/plugins.go
+// wires once for the process.
 var (
 	// PerfManagerFactory builds the perf_event stats manager. Set by the root
 	// binary to perf.NewManager.
@@ -91,3 +101,17 @@ type CpuLoadReader interface {
 // CpuLoadReaderFactory builds a CpuLoadReader. Set by the root binary when
 // --enable_load_reader is on; nil for the kubelet.
 var CpuLoadReaderFactory func() (CpuLoadReader, error)
+
+// Factories overrides, per manager instance, one or more of the seams above
+// that are otherwise sourced from the package-level *Factory vars / providers.
+// A nil field falls back to the corresponding global. Pass this via
+// Config.Factories to New() so different manager instances in the same
+// process (or across reloads) never need to mutate the globals themselves.
+type Factories struct {
+	Perf        func(configFile string, topology []info.Node) (stats.Manager, error)
+	Resctrl     func(interval time.Duration, vendorID string, inHostNamespace bool) (stats.ResctrlManager, error)
+	Summary     func(spec info.ContainerSpec) (SummaryReader, error)
+	ProcessList func(containerName string, isRoot bool, cadvisorContainer string, inHostNamespace bool) ([]info.ProcessInfo, error)
+	Collector   func(handler container.ContainerHandler, readFile func(string) ([]byte, error), httpClient *http.Client) (CollectorManager, error)
+	CpuLoad     func() (CpuLoadReader, error)
+}

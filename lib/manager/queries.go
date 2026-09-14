@@ -164,7 +164,7 @@ func (m *manager) GetDerivedStats(containerName string, options info.RequestOpti
 // done by an injected ProcessListProvider (the root binary's ps-based
 // implementation); the kubelet leaves it nil and gets an empty list.
 func (m *manager) GetProcessList(containerName string, options info.RequestOptions) ([]info.ProcessInfo, error) {
-	if ProcessListProvider == nil {
+	if m.processListProvider == nil {
 		return []info.ProcessInfo{}, nil
 	}
 	// Only single-container listing is supported.
@@ -180,7 +180,7 @@ func (m *manager) GetProcessList(containerName string, options info.RequestOptio
 	for _, c := range conts {
 		cont = c
 	}
-	return ProcessListProvider(cont.info.Name, cont.info.Name == "/", m.cadvisorContainer, m.inHostNamespace)
+	return m.processListProvider(cont.info.Name, cont.info.Name == "/", m.cadvisorContainer, m.inHostNamespace)
 }
 
 func (m *manager) containerDataSliceToContainerInfoSlice(containers []*containerData, query *info.ContainerInfoRequest) ([]*info.ContainerInfo, error) {
