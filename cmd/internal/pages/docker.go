@@ -54,7 +54,7 @@ func toStatusKV(status info.DockerStatus) ([]keyVal, []keyVal) {
 	}, ds
 }
 
-func serveDockerPage(m manager.Manager, w http.ResponseWriter, u *url.URL) {
+func serveDockerPage(m manager.Manager, dockerOptions *docker.Options, w http.ResponseWriter, u *url.URL) {
 	start := time.Now()
 
 	// The container name is the path after the handler
@@ -81,7 +81,7 @@ func serveDockerPage(m manager.Manager, w http.ResponseWriter, u *url.URL) {
 		}
 
 		// Get Docker status
-		status, err := docker.Status()
+		status, err := dockerOptions.Status()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to get docker info: %v", err), http.StatusInternalServerError)
 			return
@@ -89,7 +89,7 @@ func serveDockerPage(m manager.Manager, w http.ResponseWriter, u *url.URL) {
 
 		dockerStatus, driverStatus := toStatusKV(status)
 		// Get Docker Images
-		images, err := docker.Images()
+		images, err := dockerOptions.Images()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to get docker images: %v", err), http.StatusInternalServerError)
 			return

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build linux
+
 package containerd
 
 import (
@@ -76,8 +78,12 @@ const (
 )
 
 // Client creates a containerd client, caching it on the Options so repeated
-// calls with the same Options reuse one connection.
-func (opts *Options) Client(address, namespace string) (ContainerdClient, error) {
+// calls with the same Options reuse one connection. It always dials
+// opts.ContainerdEndpoint/opts.ContainerdNamespace — construct a distinct
+// Options for a distinct endpoint or namespace rather than expecting this
+// method to re-dial with different values after the first call.
+func (opts *Options) Client() (ContainerdClient, error) {
+	address, namespace := opts.ContainerdEndpoint, opts.ContainerdNamespace
 	opts.once.Do(func() {
 		tryConn, err := net.DialTimeout("unix", address, connectionTimeout)
 		if err != nil {

@@ -926,3 +926,72 @@ func TestDestroyContainerConcurrent(t *testing.T) {
 	// At least one event should be recorded.
 	assert.GreaterOrEqual(t, len(mockEventHandler.events), 1, "at least one destruction event should be recorded")
 }
+
+// TestNew_FactoriesAreInstanceLocalNotGlobal is the central claim of
+// Config.Factories: two managers built by New() resolve their seams once, at
+// construction, and never re-read the package-level *Factory vars
+// afterward. It builds two managers — one with an explicit
+// Factories.ProcessList override, one leaving it nil to fall back to the
+// global as it stood at that moment — then reassigns the global. Neither
+// manager's behavior may change: m1 keeps using its own override, and m2
+// keeps using the value the global held at its construction, not the
+// reassigned one. This is the exact reload/multi-instance race the
+// Config.Factories change was made to fix; before it, both managers would
+// have read the same mutable global on every call and drifted together.
+func TestNew_FactoriesAreInstanceLocalNotGlobal(t *testing.T) {
+	var globalCalls, m1Calls, staleCalls int
+
+	ProcessListProvider = func(string, bool, string, bool) ([]info.ProcessInfo, error) {
+		globalCalls++
+		return nil, nil
+	}
+	defer func() { ProcessListProvider = nil }()
+
+	interval := time.Second
+	allowDynamic := true
+	hcfg := HousekeepingConfig{Interval: &interval, AllowDynamic: &allowDynamic}
+
+	newTestConfig := func(pl func(string, bool, string, bool) ([]info.ProcessInfo, error)) Config {
+		return Config{Factories: Factories{ProcessList: pl}}
+	}
+
+	m1if, err := New(newTestConfig(func(string, bool, string, bool) ([]info.ProcessInfo, error) {
+		m1Calls++
+		return nil, nil
+	}), memory.New(time.Minute, nil), &fakesysfs.FakeSysFs{}, hcfg, container.MetricSet{}, nil, nil, nil, "", 0)
+	if err != nil {
+		t.Fatalf("New(m1): %v", err)
+	}
+	m2if, err := New(newTestConfig(nil), memory.New(time.Minute, nil), &fakesysfs.FakeSysFs{}, hcfg, container.MetricSet{}, nil, nil, nil, "", 0)
+	if err != nil {
+		t.Fatalf("New(m2): %v", err)
+	}
+	m1, m2 := m1if.(*manager), m2if.(*manager)
+	m1.addContainer(t, "/x", "")
+	m2.addContainer(t, "/x", "")
+
+	// Reassign the global now, after both managers exist. Neither may
+	// observe this: m1 never reads the global at all, and m2 already
+	// resolved to whatever the global was above.
+	ProcessListProvider = func(string, bool, string, bool) ([]info.ProcessInfo, error) {
+		staleCalls++
+		return nil, nil
+	}
+
+	if _, err := m1.GetProcessList("/x", info.RequestOptions{IdType: info.TypeName, Count: 1}); err != nil {
+		t.Fatalf("m1.GetProcessList: %v", err)
+	}
+	if _, err := m2.GetProcessList("/x", info.RequestOptions{IdType: info.TypeName, Count: 1}); err != nil {
+		t.Fatalf("m2.GetProcessList: %v", err)
+	}
+
+	if m1Calls != 1 {
+		t.Errorf("m1 used its own Factories.ProcessList override %d times, want 1", m1Calls)
+	}
+	if globalCalls != 1 {
+		t.Errorf("m2 used the global as it stood at its own New() call %d times, want 1", globalCalls)
+	}
+	if staleCalls != 0 {
+		t.Errorf("a manager used the global reassigned after construction %d times, want 0 — this is the reload race Config.Factories fixes", staleCalls)
+	}
+}

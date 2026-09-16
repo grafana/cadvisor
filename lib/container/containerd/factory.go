@@ -37,12 +37,14 @@ import (
 var containerdEnvMetadataWhiteList = flag.String("containerd_env_metadata_whitelist", "", "DEPRECATED: this flag will be removed, please use `env_metadata_whitelist`. A comma-separated list of environment variable keys matched with specified prefix that needs to be collected for containerd containers")
 
 // ArgContainerdEndpoint and ArgContainerdNamespace are registered on the
-// global flag set only so the name and default remain available to external
-// consumers (notably the kubelet, see lib/cadvisorflags) that look them up by
-// name. Nothing in this package reads them: the actual endpoint/namespace
-// used at runtime comes from the explicit Options passed to NewPluginWithOptions,
-// so callers such as Alloy can configure independent instances without
-// touching process-global flags.
+// global flag set so the name and default remain available to external
+// consumers that look them up by name — notably the kubelet (see
+// lib/cadvisorflags), but also cmd/cadvisor.go, which still dereferences
+// these two as the cAdvisor binary's own default endpoint/namespace. Nothing
+// in this package reads them itself: NewPluginWithOptions takes the
+// endpoint/namespace as explicit Options fields, so a caller such as Alloy
+// can configure independent instances without touching process-global flags
+// at all — it just shouldn't assume these vars are otherwise unused.
 var ArgContainerdEndpoint = flag.String("containerd", "/run/containerd/containerd.sock", "containerd endpoint")
 var ArgContainerdNamespace = flag.String("containerd-namespace", "k8s.io", "containerd namespace")
 
@@ -89,7 +91,7 @@ func (f *containerdFactory) String() string {
 }
 
 func (f *containerdFactory) NewContainerHandler(name string, metadataEnvAllowList []string, inHostNamespace bool) (handler container.ContainerHandler, err error) {
-	client, err := f.options.Client(f.options.ContainerdEndpoint, f.options.ContainerdNamespace)
+	client, err := f.options.Client()
 	if err != nil {
 		return
 	}
@@ -158,7 +160,7 @@ func (f *containerdFactory) DebugInfo() map[string][]string {
 
 // Register root container before running this function!
 func Register(opts *Options, factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics container.MetricSet) (container.Factories, error) {
-	client, err := opts.Client(opts.ContainerdEndpoint, opts.ContainerdNamespace)
+	client, err := opts.Client()
 	if err != nil {
 		return nil, fmt.Errorf("unable to create containerd client: %v", err)
 	}

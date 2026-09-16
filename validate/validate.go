@@ -288,7 +288,7 @@ func validateIoScheduler(containerManager manager.Manager) (string, string) {
 	return Supported, desc
 }
 
-func HandleRequest(w http.ResponseWriter, containerManager manager.Manager) error {
+func HandleRequest(w http.ResponseWriter, containerManager manager.Manager, dockerOptions *docker.Options) error {
 	// Get cAdvisor version Info.
 	versionInfo, err := containerManager.GetVersionInfo()
 	if err != nil {
@@ -312,7 +312,7 @@ func HandleRequest(w http.ResponseWriter, containerManager manager.Manager) erro
 	dockerValidation, desc := validateDockerVersion(versionInfo.DockerVersion)
 	out += fmt.Sprintf(OutputFormat, "Docker version", dockerValidation, desc)
 
-	dockerInfoValidation, desc := validateDockerInfo(docker.DefaultOptions())
+	dockerInfoValidation, desc := validateDockerInfo(dockerOptions)
 	out += fmt.Sprintf(OutputFormat, "Docker driver setup", dockerInfoValidation, desc)
 
 	ioSchedulerValidation, desc := validateIoScheduler(containerManager)

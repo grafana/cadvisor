@@ -34,7 +34,17 @@ import (
 )
 
 func NewPluginWithOptions(e string, do *docker.Options) container.Plugin {
-	return &plugin{options: &Options{podmanEndpoint: e, dockerOptions: do}}
+	return &plugin{options: NewOptions(e, do)}
+}
+
+// NewOptions builds a podman Options from an explicit endpoint and docker
+// Options (podman shares docker's status/image-listing code), for callers
+// that need the Options directly rather than through NewPluginWithOptions —
+// e.g. to build the same status page or /validate output the podman plugin
+// itself uses, instead of falling back to DefaultOptions() and reporting on
+// the wrong endpoint.
+func NewOptions(podmanEndpoint string, dockerOptions *docker.Options) *Options {
+	return &Options{podmanEndpoint: podmanEndpoint, dockerOptions: dockerOptions}
 }
 
 type plugin struct {

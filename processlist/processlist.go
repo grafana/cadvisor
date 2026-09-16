@@ -15,11 +15,15 @@
 // Package processlist implements the v2 /ps endpoint's process listing for the
 // full cAdvisor binary, or any other embedder of the lib/manager library. It
 // is wired into manager.ProcessListProvider (the kubelet leaves that nil and
-// lists no processes); cmd/plugins.go does this for the cAdvisor binary
-// (manager.ProcessListProvider = processlist.List), and any other embedder
-// can set it the same way. The logic — shelling out to `ps` and filtering by
-// the container's cgroup — lives here rather than in the library to keep the
-// library lean.
+// lists no processes); cmd/plugins.go sets that package-level var
+// (manager.ProcessListProvider = processlist.List) as the cAdvisor binary's
+// process-wide default. Any other embedder (e.g. Alloy) should instead pass
+// it per manager instance via manager.Config{Factories: manager.Factories{
+// ProcessList: processlist.List}}, so it never has to mutate the global
+// (which would race a reload against an already-running manager — see
+// lib/manager/plugins.go's Factories doc). The logic — shelling out to `ps`
+// and filtering by the container's cgroup — lives here rather than in the
+// library to keep the library lean.
 package processlist
 
 import (

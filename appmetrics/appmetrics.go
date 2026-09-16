@@ -15,11 +15,18 @@
 // Package appmetrics builds the application-metrics collector manager for the
 // full cAdvisor binary, or any other embedder of the lib/manager library. It
 // is wired into manager.CollectorManagerFactory (the kubelet leaves that nil
-// and runs no collectors); cmd/plugins.go does this for the cAdvisor binary,
-// and any other embedder (e.g. Alloy) can set it the same way:
-// manager.CollectorManagerFactory = func(h container.ContainerHandler, readFile func(string) ([]byte, error), c *http.Client) (manager.CollectorManager, error) {
-// 	return appmetrics.NewManager(h, readFile, c, countLimit)
-// }
+// and runs no collectors); cmd/plugins.go sets that package-level var as the
+// cAdvisor binary's process-wide default. Any other embedder (e.g. Alloy)
+// should instead pass it per manager instance via manager.Config, so it never
+// has to mutate the global (which would race a reload against an
+// already-running manager — see lib/manager/plugins.go's Factories doc):
+// manager.New(manager.Config{
+// 	Factories: manager.Factories{
+// 		Collector: func(h container.ContainerHandler, readFile func(string) ([]byte, error), c *http.Client) (manager.CollectorManager, error) {
+// 			return appmetrics.NewManager(h, readFile, c, countLimit)
+// 		},
+// 	},
+// }, ...)
 // The collector implementations live in the root collector package rather
 // than the library to keep the library lean.
 package appmetrics

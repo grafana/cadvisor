@@ -47,8 +47,8 @@ import (
 	"github.com/google/cadvisor/lib/utils/sysfs"
 	"github.com/google/cadvisor/lib/version"
 
-	// Register container providers
-	_ "github.com/google/cadvisor/cmd/internal/container/install"
+	// Container and filesystem providers are instantiated explicitly below
+	// (plugins, fsPlugins) instead of via a global-registering install package.
 
 	// Register CloudProviders
 	_ "github.com/google/cadvisor/utils/cloudinfo/aws"
@@ -156,28 +156,28 @@ func main() {
 	klog.V(1).Infof("enabled metrics: %s", includedMetrics.String())
 	setMaxProcs()
 
+	// Built once and reused everywhere a Docker/Podman client is needed (the
+	// container plugins below, the /docker and /podman status pages, and
+	// /validate), so they all talk to the same configured endpoints instead of
+	// duplicating (and risking drifting) the same flag values.
+	dockerOptions := &docker.Options{
+		DockerEndpoint:     *ArgDockerEndpoint,
+		DockerTLS:          *ArgDockerTLS,
+		DockerCert:         *ArgDockerCert,
+		DockerKey:          *ArgDockerKey,
+		DockerCA:           *ArgDockerCA,
+		ContainerDEndpoint: *containerd.ArgContainerdEndpoint,
+	}
+	podmanOptions := podman.NewOptions(*ArgPodmanEndpoint, dockerOptions)
+
 	plugins := map[string]container.Plugin{
 		"containerd": containerd.NewPluginWithOptions(&containerd.Options{
 			ContainerdEndpoint:  *containerd.ArgContainerdEndpoint,
 			ContainerdNamespace: *containerd.ArgContainerdNamespace,
 		}),
-		"docker": docker.NewPluginWithOptions(&docker.Options{
-			DockerEndpoint: *ArgDockerEndpoint,
-			DockerTLS:      *ArgDockerTLS,
-			DockerCert:     *ArgDockerCert,
-			DockerKey:      *ArgDockerKey,
-			DockerCA:       *ArgDockerCA,
-		}),
-		"crio": crio.NewPlugin(),
-		"podman": podman.NewPluginWithOptions(
-			*ArgPodmanEndpoint,
-			&docker.Options{
-				DockerEndpoint: *ArgDockerEndpoint,
-				DockerTLS:      *ArgDockerTLS,
-				DockerCert:     *ArgDockerCert,
-				DockerKey:      *ArgDockerKey,
-				DockerCA:       *ArgDockerCA,
-			}),
+		"docker":  docker.NewPluginWithOptions(dockerOptions),
+		"crio":    crio.NewPlugin(),
+		"podman":  podman.NewPluginWithOptions(*ArgPodmanEndpoint, dockerOptions),
 		"systemd": systemd.NewPlugin(),
 	}
 
@@ -228,7 +228,7 @@ func main() {
 	}
 
 	// Register all HTTP handlers.
-	err = cadvisorhttp.RegisterHandlers(mux, resourceManager, *httpAuthFile, *httpAuthRealm, *httpDigestFile, *httpDigestRealm, *urlBasePrefix)
+	err = cadvisorhttp.RegisterHandlers(mux, resourceManager, dockerOptions, podmanOptions, *httpAuthFile, *httpAuthRealm, *httpDigestFile, *httpDigestRealm, *urlBasePrefix)
 	if err != nil {
 		klog.Fatalf("Failed to register HTTP handlers: %v", err)
 	}

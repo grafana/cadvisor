@@ -25,6 +25,7 @@ import (
 
 	info "github.com/google/cadvisor/info/v1"
 	"github.com/google/cadvisor/lib/container"
+	"github.com/google/cadvisor/lib/container/containerd"
 	"github.com/google/cadvisor/lib/fs"
 
 	dclient "github.com/moby/moby/client"
@@ -54,6 +55,14 @@ type Options struct {
 
 	dockerRootDirOnce sync.Once
 	dockerRootDir     string
+
+	// containerdOptions caches the containerd.Options built from
+	// ContainerDEndpoint (see ContainerDClient in client.go), so repeated
+	// calls reuse one containerd client instead of dialing a fresh one —
+	// and so a fresh Options doesn't defeat containerd.Options.Client's own
+	// sync.Once.
+	containerdOptionsOnce sync.Once
+	containerdOptions     *containerd.Options
 }
 
 func DefaultOptions() *Options {

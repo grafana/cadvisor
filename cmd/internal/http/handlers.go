@@ -23,6 +23,8 @@ import (
 	httpmux "github.com/google/cadvisor/cmd/internal/http/mux"
 	"github.com/google/cadvisor/cmd/internal/pages"
 	"github.com/google/cadvisor/cmd/internal/pages/static"
+	"github.com/google/cadvisor/container/docker"
+	"github.com/google/cadvisor/container/podman"
 	"github.com/google/cadvisor/lib/container"
 	"github.com/google/cadvisor/lib/manager"
 	"github.com/google/cadvisor/lib/metrics"
@@ -37,7 +39,7 @@ import (
 	"k8s.io/utils/clock"
 )
 
-func RegisterHandlers(mux httpmux.Mux, containerManager manager.Manager, httpAuthFile, httpAuthRealm, httpDigestFile, httpDigestRealm string, urlBasePrefix string) error {
+func RegisterHandlers(mux httpmux.Mux, containerManager manager.Manager, dockerOptions *docker.Options, podmanOptions *podman.Options, httpAuthFile, httpAuthRealm, httpDigestFile, httpDigestRealm string, urlBasePrefix string) error {
 	// Basic health handler.
 	if err := healthz.RegisterHandler(mux); err != nil {
 		return fmt.Errorf("failed to register healthz handler: %s", err)
@@ -45,7 +47,7 @@ func RegisterHandlers(mux httpmux.Mux, containerManager manager.Manager, httpAut
 
 	// Validation/Debug handler.
 	mux.HandleFunc(validate.ValidatePage, func(w http.ResponseWriter, r *http.Request) {
-		err := validate.HandleRequest(w, containerManager)
+		err := validate.HandleRequest(w, containerManager, dockerOptions)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -67,7 +69,7 @@ func RegisterHandlers(mux httpmux.Mux, containerManager manager.Manager, httpAut
 		secrets := auth.HtpasswdFileProvider(httpAuthFile)
 		authenticator := auth.NewBasicAuthenticator(httpAuthRealm, secrets)
 		mux.HandleFunc(static.StaticResource, authenticator.Wrap(staticHandler))
-		if err := pages.RegisterHandlersBasic(mux, containerManager, authenticator, urlBasePrefix); err != nil {
+		if err := pages.RegisterHandlersBasic(mux, containerManager, dockerOptions, podmanOptions, authenticator, urlBasePrefix); err != nil {
 			return fmt.Errorf("failed to register pages auth handlers: %s", err)
 		}
 		authenticated = true
@@ -77,7 +79,7 @@ func RegisterHandlers(mux httpmux.Mux, containerManager manager.Manager, httpAut
 		secrets := auth.HtdigestFileProvider(httpDigestFile)
 		authenticator := auth.NewDigestAuthenticator(httpDigestRealm, secrets)
 		mux.HandleFunc(static.StaticResource, authenticator.Wrap(staticHandler))
-		if err := pages.RegisterHandlersDigest(mux, containerManager, authenticator, urlBasePrefix); err != nil {
+		if err := pages.RegisterHandlersDigest(mux, containerManager, dockerOptions, podmanOptions, authenticator, urlBasePrefix); err != nil {
 			return fmt.Errorf("failed to register pages digest handlers: %s", err)
 		}
 		authenticated = true
@@ -86,7 +88,7 @@ func RegisterHandlers(mux httpmux.Mux, containerManager manager.Manager, httpAut
 	// Change handler based on authenticator initialization
 	if !authenticated {
 		mux.HandleFunc(static.StaticResource, staticHandlerNoAuth)
-		if err := pages.RegisterHandlersBasic(mux, containerManager, nil, urlBasePrefix); err != nil {
+		if err := pages.RegisterHandlersBasic(mux, containerManager, dockerOptions, podmanOptions, nil, urlBasePrefix); err != nil {
 			return fmt.Errorf("failed to register pages handlers: %s", err)
 		}
 	}

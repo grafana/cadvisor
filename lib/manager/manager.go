@@ -240,6 +240,12 @@ func New(cfg Config, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, House
 	if collectorManagerFactory == nil {
 		collectorManagerFactory = CollectorManagerFactory
 	}
+	// A collector factory scrapes collector endpoints with collectorHTTPClient;
+	// fall back to the default client rather than handing it a nil one, which
+	// would panic at scrape time instead of at construction.
+	if collectorManagerFactory != nil && collectorHTTPClient == nil {
+		collectorHTTPClient = http.DefaultClient
+	}
 	cpuLoadReaderFactory := cfg.Factories.CpuLoad
 	if cpuLoadReaderFactory == nil {
 		cpuLoadReaderFactory = CpuLoadReaderFactory

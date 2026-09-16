@@ -57,11 +57,15 @@ func (opts *Options) Client() (*dclient.Client, error) {
 }
 
 // ContainerDClient returns a containerd client for the containerd instance
-// backing this Docker daemon (Docker's own "moby" namespace).
+// backing this Docker daemon (Docker's own "moby" namespace). The
+// containerd.Options built from it is cached on opts, so repeated calls
+// reuse one connection.
 func (opts *Options) ContainerDClient() (containerd.ContainerdClient, error) {
-	cOpts := &containerd.Options{
-		ContainerdEndpoint:  opts.ContainerDEndpoint,
-		ContainerdNamespace: "moby",
-	}
-	return cOpts.Client(cOpts.ContainerdEndpoint, cOpts.ContainerdNamespace)
+	opts.containerdOptionsOnce.Do(func() {
+		opts.containerdOptions = &containerd.Options{
+			ContainerdEndpoint:  opts.ContainerDEndpoint,
+			ContainerdNamespace: "moby",
+		}
+	})
+	return opts.containerdOptions.Client()
 }

@@ -31,7 +31,7 @@ import (
 
 const PodmanPage = "/podman/"
 
-func servePodmanPage(m manager.Manager, w http.ResponseWriter, u *url.URL) {
+func servePodmanPage(m manager.Manager, podmanOptions *podman.Options, w http.ResponseWriter, u *url.URL) {
 	start := time.Now()
 
 	containerName := u.Path[len(PodmanPage)-1:]
@@ -41,12 +41,12 @@ func servePodmanPage(m manager.Manager, w http.ResponseWriter, u *url.URL) {
 
 	if containerName == "/" {
 		// Scenario for all containers.
-		status, err := podman.Status()
+		status, err := podmanOptions.Status()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to get podman info: %v", err), http.StatusInternalServerError)
 			return
 		}
-		images, err := podman.Images()
+		images, err := podmanOptions.Images()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to get podman images: %v", err), http.StatusInternalServerError)
 			return

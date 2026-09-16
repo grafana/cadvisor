@@ -557,3 +557,42 @@ func TestProcessMounts(t *testing.T) {
 		}
 	}
 }
+
+// TestSelectPlugin_TwoDisjointMapsDoNotCrossTalk exercises the central claim
+// behind Context.Plugins: SelectPlugin (and so NewFsInfo/RealFsInfo) resolves
+// entirely from the map it's given, never from any other map or from shared
+// state — two independently configured instances must never see each other's
+// plugins. Before this, GetPluginForFsType read one process-global registry
+// that every instance shared.
+func TestSelectPlugin_TwoDisjointMapsDoNotCrossTalk(t *testing.T) {
+	pluginsA := map[string]FsPlugin{
+		"a-ext": &testPlugin{name: "a-ext", canHandle: func(fsType string) bool { return fsType == "ext4" }, priority: 10},
+	}
+	pluginsB := map[string]FsPlugin{
+		"b-btrfs": &testPlugin{name: "b-btrfs", canHandle: func(fsType string) bool { return fsType == "btrfs" }, priority: 10},
+	}
+
+	if p := SelectPlugin(pluginsA, "ext4"); p == nil || p.Name() != "a-ext" {
+		t.Errorf("pluginsA should handle ext4 via a-ext, got %v", p)
+	}
+	if p := SelectPlugin(pluginsA, "btrfs"); p != nil {
+		t.Errorf("pluginsA has no btrfs plugin, want nil, got %v", p)
+	}
+	if p := SelectPlugin(pluginsB, "btrfs"); p == nil || p.Name() != "b-btrfs" {
+		t.Errorf("pluginsB should handle btrfs via b-btrfs, got %v", p)
+	}
+	if p := SelectPlugin(pluginsB, "ext4"); p != nil {
+		t.Errorf("pluginsB has no ext4 plugin, want nil, got %v", p)
+	}
+
+	// Two RealFsInfo instances built from these disjoint maps (as NewFsInfo
+	// would from two different Context.Plugins) must resolve independently.
+	infoA := &RealFsInfo{plugins: pluginsA}
+	infoB := &RealFsInfo{plugins: pluginsB}
+	if got := SelectPlugin(infoA.plugins, "btrfs"); got != nil {
+		t.Errorf("infoA must not see infoB's btrfs plugin, got %v", got)
+	}
+	if got := SelectPlugin(infoB.plugins, "ext4"); got != nil {
+		t.Errorf("infoB must not see infoA's ext4 plugin, got %v", got)
+	}
+}
