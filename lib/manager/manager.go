@@ -183,12 +183,21 @@ type Config struct {
 }
 
 // baseHousekeepingInterval returns the configured base interval, falling back
-// to the housekeeping_interval flag when it isn't set.
-func baseHousekeepingInterval(cfg HousekeepingConfig) time.Duration {
-	if cfg.BaseInterval != nil && *cfg.BaseInterval > 0 {
-		return *cfg.BaseInterval
+// to the housekeeping_interval flag when it isn't set (nil or zero). A set
+// value must not be negative or larger than the max housekeeping interval.
+// The flag fallback isn't validated, so existing flag-based setups are unchanged.
+func baseHousekeepingInterval(cfg HousekeepingConfig) (time.Duration, error) {
+	if cfg.BaseInterval == nil || *cfg.BaseInterval == 0 {
+		return *HousekeepingInterval, nil
 	}
-	return *HousekeepingInterval
+	base := *cfg.BaseInterval
+	if base < 0 {
+		return 0, fmt.Errorf("housekeeping base interval must not be negative, got %s", base)
+	}
+	if cfg.Interval != nil && base > *cfg.Interval {
+		return 0, fmt.Errorf("housekeeping base interval (%s) must not be larger than the max housekeeping interval (%s)", base, *cfg.Interval)
+	}
+	return base, nil
 }
 
 // New takes a memory storage and returns a new manager.
@@ -199,6 +208,11 @@ func New(cfg Config, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, House
 
 	if memoryCache == nil {
 		return nil, fmt.Errorf("manager requires memory storage")
+	}
+
+	baseInterval, hkErr := baseHousekeepingInterval(HousekeepingConfig)
+	if hkErr != nil {
+		return nil, hkErr
 	}
 
 	// Detect the container we are running on.
@@ -279,7 +293,7 @@ func New(cfg Config, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, House
 		cadvisorContainer:                     selfContainer,
 		inHostNamespace:                       inHostNamespace,
 		startupTime:                           time.Now(),
-		baseHousekeepingInterval:              baseHousekeepingInterval(HousekeepingConfig),
+		baseHousekeepingInterval:              baseInterval,
 		maxHousekeepingInterval:               *HousekeepingConfig.Interval,
 		allowDynamicHousekeeping:              *HousekeepingConfig.AllowDynamic,
 		disableContainerDiscovery:             HousekeepingConfig.DisableContainerDiscovery,

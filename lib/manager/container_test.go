@@ -386,12 +386,31 @@ func TestNextHousekeepingInterval(t *testing.T) {
 }
 
 func TestBaseHousekeepingInterval(t *testing.T) {
-	custom := 15 * time.Second
-	zero := time.Duration(0)
-
-	assert.Equal(t, *HousekeepingInterval, baseHousekeepingInterval(HousekeepingConfig{}))
-	assert.Equal(t, *HousekeepingInterval, baseHousekeepingInterval(HousekeepingConfig{BaseInterval: &zero}))
-	assert.Equal(t, custom, baseHousekeepingInterval(HousekeepingConfig{BaseInterval: &custom}))
+	duration := func(d time.Duration) *time.Duration { return &d }
+	tests := []struct {
+		name    string
+		cfg     HousekeepingConfig
+		want    time.Duration
+		wantErr string
+	}{
+		{name: "nil falls back to flag", cfg: HousekeepingConfig{}, want: *HousekeepingInterval},
+		{name: "zero falls back to flag", cfg: HousekeepingConfig{BaseInterval: duration(0)}, want: *HousekeepingInterval},
+		{name: "set value is used", cfg: HousekeepingConfig{BaseInterval: duration(15 * time.Second), Interval: duration(time.Minute)}, want: 15 * time.Second},
+		{name: "equal to max is allowed", cfg: HousekeepingConfig{BaseInterval: duration(time.Minute), Interval: duration(time.Minute)}, want: time.Minute},
+		{name: "negative is rejected", cfg: HousekeepingConfig{BaseInterval: duration(-time.Second), Interval: duration(time.Minute)}, wantErr: "must not be negative"},
+		{name: "larger than max is rejected", cfg: HousekeepingConfig{BaseInterval: duration(2 * time.Minute), Interval: duration(time.Minute)}, wantErr: "must not be larger than the max"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := baseHousekeepingInterval(tc.cfg)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
 }
 
 func TestNextHousekeepingIntervalResetsToConfiguredBase(t *testing.T) {
