@@ -73,7 +73,7 @@ func (m *manager) addContainer(t *testing.T, name, namespace string) *containerD
 		ref:  info.ContainerReference{Name: name, Namespace: namespace},
 		spec: info.ContainerSpec{HasCpu: true},
 	}
-	cont, err := newContainerData(name, m.memoryCache, h, time.Minute, false, clock.RealClock{}, m.cpuLoadReaderFactory, m.summaryReaderFactory)
+	cont, err := newContainerData(name, m.memoryCache, h, *HousekeepingInterval, time.Minute, false, clock.RealClock{}, m.cpuLoadReaderFactory, m.summaryReaderFactory)
 	if err != nil {
 		t.Fatalf("newContainerData(%q): %v", name, err)
 	}
@@ -201,7 +201,7 @@ func createManagerAndAddContainers(
 			spec,
 			nil,
 		).Once()
-		cont, err := newContainerData(name, memoryCache, mockHandler, 60*time.Second, true, clocktesting.NewFakeClock(time.Now()), nil, nil)
+		cont, err := newContainerData(name, memoryCache, mockHandler, *HousekeepingInterval, 60*time.Second, true, clocktesting.NewFakeClock(time.Now()), nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -262,7 +262,7 @@ func createManagerAndAddSubContainers(
 			subcontainerList[idx],
 			nil,
 		)
-		cont, err := newContainerData(name, memoryCache, mockHandler, 60*time.Second, true, clocktesting.NewFakeClock(time.Now()), nil, nil)
+		cont, err := newContainerData(name, memoryCache, mockHandler, *HousekeepingInterval, 60*time.Second, true, clocktesting.NewFakeClock(time.Now()), nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

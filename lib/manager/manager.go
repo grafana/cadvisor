@@ -73,9 +73,9 @@ const (
 )
 
 var HousekeepingConfigFlags = HousekeepingConfig{
-	flag.Duration("max_housekeeping_interval", 60*time.Second, "Largest interval to allow between container housekeepings"),
-	flag.Bool("allow_dynamic_housekeeping", true, "Whether to allow the housekeeping interval to be dynamic"),
-	false,
+	Interval:     flag.Duration("max_housekeeping_interval", 60*time.Second, "Largest interval to allow between container housekeepings"),
+	AllowDynamic: flag.Bool("allow_dynamic_housekeeping", true, "Whether to allow the housekeeping interval to be dynamic"),
+	BaseInterval: HousekeepingInterval,
 }
 
 // The Manager interface defines operations for starting a manager and getting
@@ -163,6 +163,10 @@ type HousekeepingConfig = struct {
 	// containers. Only the root container ("/") is created at startup;
 	// other cgroup paths are created on demand when first queried.
 	DisableContainerDiscovery bool
+	// BaseInterval is the interval between container housekeepings, and the
+	// value dynamic housekeeping resets to when stats change. Nil (or a
+	// non-positive value) falls back to the housekeeping_interval flag.
+	BaseInterval *time.Duration
 }
 
 // Config bundles the per-instance overrides New() needs beyond the plain
@@ -176,6 +180,15 @@ type Config struct {
 	FsPlugins  map[string]fs.FsPlugin
 	RawOptions raw.Options
 	Factories  Factories
+}
+
+// baseHousekeepingInterval returns the configured base interval, falling back
+// to the housekeeping_interval flag when it isn't set.
+func baseHousekeepingInterval(cfg HousekeepingConfig) time.Duration {
+	if cfg.BaseInterval != nil && *cfg.BaseInterval > 0 {
+		return *cfg.BaseInterval
+	}
+	return *HousekeepingInterval
 }
 
 // New takes a memory storage and returns a new manager.
@@ -266,6 +279,7 @@ func New(cfg Config, memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, House
 		cadvisorContainer:                     selfContainer,
 		inHostNamespace:                       inHostNamespace,
 		startupTime:                           time.Now(),
+		baseHousekeepingInterval:              baseHousekeepingInterval(HousekeepingConfig),
 		maxHousekeepingInterval:               *HousekeepingConfig.Interval,
 		allowDynamicHousekeeping:              *HousekeepingConfig.AllowDynamic,
 		disableContainerDiscovery:             HousekeepingConfig.DisableContainerDiscovery,
@@ -383,6 +397,7 @@ type manager struct {
 	cadvisorContainer         string
 	inHostNamespace           bool
 	startupTime               time.Time
+	baseHousekeepingInterval  time.Duration
 	maxHousekeepingInterval   time.Duration
 	allowDynamicHousekeeping  bool
 	disableContainerDiscovery bool
@@ -919,7 +934,7 @@ func (m *manager) createContainer(containerName string, watchSource watcher.Cont
 		klog.V(4).Infof("ignoring container %q", containerName)
 		return nil
 	}
-	cont, err := newContainerData(containerName, m.memoryCache, handler, m.maxHousekeepingInterval, m.allowDynamicHousekeeping, clock.RealClock{}, m.cpuLoadReaderFactory, m.summaryReaderFactory)
+	cont, err := newContainerData(containerName, m.memoryCache, handler, m.baseHousekeepingInterval, m.maxHousekeepingInterval, m.allowDynamicHousekeeping, clock.RealClock{}, m.cpuLoadReaderFactory, m.summaryReaderFactory)
 	if err != nil {
 		return err
 	}

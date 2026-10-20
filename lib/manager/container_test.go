@@ -51,7 +51,7 @@ func setupContainerData(t *testing.T, spec info.ContainerSpec) (*containerData, 
 	)
 	memoryCache := memory.New(60, nil)
 	fakeClock := clock.NewFakeClock(time.Now())
-	ret, err := newContainerData(containerName, memoryCache, mockHandler, 60*time.Second, true, fakeClock, nil, nil)
+	ret, err := newContainerData(containerName, memoryCache, mockHandler, *HousekeepingInterval, 60*time.Second, true, fakeClock, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,4 +383,35 @@ func TestNextHousekeepingInterval(t *testing.T) {
 			assert.False(t, cd.firstHousekeeping)
 		})
 	}
+}
+
+func TestBaseHousekeepingInterval(t *testing.T) {
+	custom := 15 * time.Second
+	zero := time.Duration(0)
+
+	assert.Equal(t, *HousekeepingInterval, baseHousekeepingInterval(HousekeepingConfig{}))
+	assert.Equal(t, *HousekeepingInterval, baseHousekeepingInterval(HousekeepingConfig{BaseInterval: &zero}))
+	assert.Equal(t, custom, baseHousekeepingInterval(HousekeepingConfig{BaseInterval: &custom}))
+}
+
+func TestNextHousekeepingIntervalResetsToConfiguredBase(t *testing.T) {
+	base := 15 * time.Second
+	mockHandler := containertest.NewMockContainerHandler(containerName)
+	mockHandler.On("GetSpec").Return(itest.GenerateRandomContainerSpec(4), nil)
+	memoryCache := memory.New(time.Minute, nil) // long enough to keep both samples below
+	cd, err := newContainerData(containerName, memoryCache, mockHandler, base, 60*time.Second, true, clock.NewFakeClock(time.Now()), nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, base, cd.housekeepingInterval, "new containers start at the configured base")
+
+	cd.firstHousekeeping = false
+	cd.jitterFactor = 0
+	cd.housekeepingInterval = 60 * time.Second // as if it had backed off
+
+	// Two different samples, so StatsEq is false and the interval resets.
+	cInfo := &info.ContainerInfo{ContainerReference: info.ContainerReference{Name: containerName}}
+	now := time.Now()
+	require.NoError(t, memoryCache.AddStats(cInfo, &info.ContainerStats{Timestamp: now, Cpu: &info.CpuStats{Usage: info.CpuUsage{Total: 1}}}))
+	require.NoError(t, memoryCache.AddStats(cInfo, &info.ContainerStats{Timestamp: now.Add(time.Second), Cpu: &info.CpuStats{Usage: info.CpuUsage{Total: 2}}}))
+
+	assert.Equal(t, base, cd.nextHousekeepingInterval())
 }
