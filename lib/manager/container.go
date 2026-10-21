@@ -73,6 +73,7 @@ type containerData struct {
 	memoryCache              *memory.InMemoryCache
 	lock                     sync.Mutex
 	housekeepingInterval     time.Duration
+	baseHousekeepingInterval time.Duration
 	maxHousekeepingInterval  time.Duration
 	allowDynamicHousekeeping bool
 	firstHousekeeping        bool
@@ -209,7 +210,7 @@ func (cd *containerData) GetInfo(shouldUpdateSubcontainers bool) (*containerInfo
 	return &cInfo, nil
 }
 
-func newContainerData(containerName string, memoryCache *memory.InMemoryCache, handler container.ContainerHandler, maxHousekeepingInterval time.Duration, allowDynamicHousekeeping bool, clock clock.Clock, cpuLoadReaderFactory func() (CpuLoadReader, error), summaryReaderFactory func(spec info.ContainerSpec) (SummaryReader, error)) (*containerData, error) {
+func newContainerData(containerName string, memoryCache *memory.InMemoryCache, handler container.ContainerHandler, baseHousekeepingInterval time.Duration, maxHousekeepingInterval time.Duration, allowDynamicHousekeeping bool, clock clock.Clock, cpuLoadReaderFactory func() (CpuLoadReader, error), summaryReaderFactory func(spec info.ContainerSpec) (SummaryReader, error)) (*containerData, error) {
 	if memoryCache == nil {
 		return nil, fmt.Errorf("nil memory storage")
 	}
@@ -224,7 +225,8 @@ func newContainerData(containerName string, memoryCache *memory.InMemoryCache, h
 	cont := &containerData{
 		handler:                  handler,
 		memoryCache:              memoryCache,
-		housekeepingInterval:     *HousekeepingInterval,
+		housekeepingInterval:     baseHousekeepingInterval,
+		baseHousekeepingInterval: baseHousekeepingInterval,
 		maxHousekeepingInterval:  maxHousekeepingInterval,
 		allowDynamicHousekeeping: allowDynamicHousekeeping,
 		firstHousekeeping:        true,
@@ -286,9 +288,9 @@ func (cd *containerData) nextHousekeepingInterval() time.Duration {
 				if cd.housekeepingInterval > cd.maxHousekeepingInterval {
 					cd.housekeepingInterval = cd.maxHousekeepingInterval
 				}
-			} else if cd.housekeepingInterval != *HousekeepingInterval {
+			} else if cd.housekeepingInterval != cd.baseHousekeepingInterval {
 				// Lower interval back to the baseline.
-				cd.housekeepingInterval = *HousekeepingInterval
+				cd.housekeepingInterval = cd.baseHousekeepingInterval
 			}
 		}
 	}
@@ -318,8 +320,8 @@ func (cd *containerData) housekeeping() {
 
 	// Long housekeeping is either 100ms or half of the housekeeping interval.
 	longHousekeeping := 100 * time.Millisecond
-	if *HousekeepingInterval/2 < longHousekeeping {
-		longHousekeeping = *HousekeepingInterval / 2
+	if cd.baseHousekeepingInterval/2 < longHousekeeping {
+		longHousekeeping = cd.baseHousekeepingInterval / 2
 	}
 
 	// Housekeep every second.

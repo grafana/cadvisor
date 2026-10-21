@@ -51,7 +51,7 @@ func setupContainerData(t *testing.T, spec info.ContainerSpec) (*containerData, 
 	)
 	memoryCache := memory.New(60, nil)
 	fakeClock := clock.NewFakeClock(time.Now())
-	ret, err := newContainerData(containerName, memoryCache, mockHandler, 60*time.Second, true, fakeClock, nil, nil)
+	ret, err := newContainerData(containerName, memoryCache, mockHandler, *HousekeepingInterval, 60*time.Second, true, fakeClock, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,4 +383,54 @@ func TestNextHousekeepingInterval(t *testing.T) {
 			assert.False(t, cd.firstHousekeeping)
 		})
 	}
+}
+
+func TestBaseHousekeepingInterval(t *testing.T) {
+	duration := func(d time.Duration) *time.Duration { return &d }
+	tests := []struct {
+		name    string
+		cfg     HousekeepingConfig
+		want    time.Duration
+		wantErr string
+	}{
+		{name: "nil falls back to flag", cfg: HousekeepingConfig{}, want: *HousekeepingInterval},
+		{name: "zero falls back to flag", cfg: HousekeepingConfig{BaseInterval: duration(0)}, want: *HousekeepingInterval},
+		{name: "set value is used", cfg: HousekeepingConfig{BaseInterval: duration(15 * time.Second), Interval: duration(time.Minute)}, want: 15 * time.Second},
+		{name: "equal to max is allowed", cfg: HousekeepingConfig{BaseInterval: duration(time.Minute), Interval: duration(time.Minute)}, want: time.Minute},
+		{name: "negative is rejected", cfg: HousekeepingConfig{BaseInterval: duration(-time.Second), Interval: duration(time.Minute)}, wantErr: "must not be negative"},
+		{name: "larger than max is rejected", cfg: HousekeepingConfig{BaseInterval: duration(2 * time.Minute), Interval: duration(time.Minute)}, wantErr: "must not be larger than the max"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := baseHousekeepingInterval(tc.cfg)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestNextHousekeepingIntervalResetsToConfiguredBase(t *testing.T) {
+	base := 15 * time.Second
+	mockHandler := containertest.NewMockContainerHandler(containerName)
+	mockHandler.On("GetSpec").Return(itest.GenerateRandomContainerSpec(4), nil)
+	memoryCache := memory.New(time.Minute, nil) // long enough to keep both samples below
+	cd, err := newContainerData(containerName, memoryCache, mockHandler, base, 60*time.Second, true, clock.NewFakeClock(time.Now()), nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, base, cd.housekeepingInterval, "new containers start at the configured base")
+
+	cd.firstHousekeeping = false
+	cd.jitterFactor = 0
+	cd.housekeepingInterval = 60 * time.Second // as if it had backed off
+
+	// Two different samples, so StatsEq is false and the interval resets.
+	cInfo := &info.ContainerInfo{ContainerReference: info.ContainerReference{Name: containerName}}
+	now := time.Now()
+	require.NoError(t, memoryCache.AddStats(cInfo, &info.ContainerStats{Timestamp: now, Cpu: &info.CpuStats{Usage: info.CpuUsage{Total: 1}}}))
+	require.NoError(t, memoryCache.AddStats(cInfo, &info.ContainerStats{Timestamp: now.Add(time.Second), Cpu: &info.CpuStats{Usage: info.CpuUsage{Total: 2}}}))
+
+	assert.Equal(t, base, cd.nextHousekeepingInterval())
 }
