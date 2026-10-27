@@ -387,6 +387,7 @@ func TestNextHousekeepingInterval(t *testing.T) {
 
 func TestBaseHousekeepingInterval(t *testing.T) {
 	duration := func(d time.Duration) *time.Duration { return &d }
+	boolean := func(b bool) *bool { return &b }
 	tests := []struct {
 		name    string
 		cfg     HousekeepingConfig
@@ -399,6 +400,9 @@ func TestBaseHousekeepingInterval(t *testing.T) {
 		{name: "equal to max is allowed", cfg: HousekeepingConfig{BaseInterval: duration(time.Minute), Interval: duration(time.Minute)}, want: time.Minute},
 		{name: "negative is rejected", cfg: HousekeepingConfig{BaseInterval: duration(-time.Second), Interval: duration(time.Minute)}, wantErr: "must not be negative"},
 		{name: "larger than max is rejected", cfg: HousekeepingConfig{BaseInterval: duration(2 * time.Minute), Interval: duration(time.Minute)}, wantErr: "must not be larger than the max"},
+		{name: "larger than max is rejected when dynamic", cfg: HousekeepingConfig{BaseInterval: duration(2 * time.Minute), Interval: duration(time.Minute), AllowDynamic: boolean(true)}, wantErr: "must not be larger than the max"},
+		{name: "larger than max is allowed when not dynamic", cfg: HousekeepingConfig{BaseInterval: duration(2 * time.Minute), Interval: duration(time.Minute), AllowDynamic: boolean(false)}, want: 2 * time.Minute},
+		{name: "negative is rejected when not dynamic", cfg: HousekeepingConfig{BaseInterval: duration(-time.Second), Interval: duration(time.Minute), AllowDynamic: boolean(false)}, wantErr: "must not be negative"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

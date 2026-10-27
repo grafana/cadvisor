@@ -164,8 +164,8 @@ type HousekeepingConfig = struct {
 	// other cgroup paths are created on demand when first queried.
 	DisableContainerDiscovery bool
 	// BaseInterval is the interval between container housekeepings, and the
-	// value dynamic housekeeping resets to when stats change. Nil (or a
-	// non-positive value) falls back to the housekeeping_interval flag.
+	// value dynamic housekeeping resets to when stats change. Nil or zero
+	// falls back to the housekeeping_interval flag.
 	BaseInterval *time.Duration
 }
 
@@ -184,8 +184,10 @@ type Config struct {
 
 // baseHousekeepingInterval returns the configured base interval, falling back
 // to the housekeeping_interval flag when it isn't set (nil or zero). A set
-// value must not be negative or larger than the max housekeeping interval.
-// The flag fallback isn't validated, so existing flag-based setups are unchanged.
+// value must not be negative. It must also not be larger than the max
+// housekeeping interval, unless dynamic housekeeping is off: the max only
+// applies to dynamic backoff. The flag fallback isn't validated, so existing
+// flag-based setups are unchanged.
 func baseHousekeepingInterval(cfg HousekeepingConfig) (time.Duration, error) {
 	if cfg.BaseInterval == nil || *cfg.BaseInterval == 0 {
 		return *HousekeepingInterval, nil
@@ -194,7 +196,8 @@ func baseHousekeepingInterval(cfg HousekeepingConfig) (time.Duration, error) {
 	if base < 0 {
 		return 0, fmt.Errorf("housekeeping base interval must not be negative, got %s", base)
 	}
-	if cfg.Interval != nil && base > *cfg.Interval {
+	dynamic := cfg.AllowDynamic == nil || *cfg.AllowDynamic
+	if dynamic && cfg.Interval != nil && base > *cfg.Interval {
 		return 0, fmt.Errorf("housekeeping base interval (%s) must not be larger than the max housekeeping interval (%s)", base, *cfg.Interval)
 	}
 	return base, nil
