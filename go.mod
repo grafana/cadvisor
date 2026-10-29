@@ -1,8 +1,8 @@
 module github.com/google/cadvisor
 
-go 1.19
+go 1.26.0
 
-replace golang.org/x/net => golang.org/x/net v0.7.0
+replace golang.org/x/net => golang.org/x/net v0.62.0
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
@@ -28,8 +28,8 @@ require (
 	github.com/prometheus/client_model v0.3.0
 	github.com/prometheus/common v0.37.0
 	github.com/stretchr/testify v1.8.2
-	golang.org/x/net v0.10.0
-	golang.org/x/sys v0.8.0
+	golang.org/x/net v0.62.0
+	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.57.0
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
@@ -65,7 +65,7 @@ require (
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/vishvananda/netlink v1.1.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df // indirect
-	golang.org/x/text v0.9.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230803162519-f966b187b2e5 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
