@@ -1,6 +1,6 @@
 module github.com/google/cadvisor/cmd
 
-go 1.19
+go 1.23.0
 
 // Record that the cmd module requires the cadvisor library module.
 // The github.com/google/cadvisor/cmd module is built using the Makefile
@@ -24,7 +24,7 @@ require (
 	github.com/pquerna/ffjson v0.0.0-20190930134022-aa0246cd15f7 // indirect
 	github.com/prometheus/client_golang v1.14.0
 	github.com/stretchr/testify v1.8.2
-	golang.org/x/oauth2 v0.8.0
+	golang.org/x/oauth2 v0.27.0
 	google.golang.org/api v0.126.0
 	gopkg.in/olivere/elastic.v2 v2.0.61
 	k8s.io/klog/v2 v2.100.1
@@ -33,7 +33,7 @@ require (
 
 require (
 	cloud.google.com/go/compute v1.23.0 // indirect
-	cloud.google.com/go/compute/metadata v0.2.3 // indirect
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.4.15 // indirect
 	github.com/aws/aws-sdk-go v1.35.24 // indirect
