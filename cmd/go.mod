@@ -1,6 +1,6 @@
 module github.com/google/cadvisor/cmd
 
-go 1.19
+go 1.25.0
 
 // Record that the cmd module requires the cadvisor library module.
 // The github.com/google/cadvisor/cmd module is built using the Makefile
@@ -104,7 +104,7 @@ require (
 	golang.org/x/crypto v0.9.0 // indirect
 	golang.org/x/net v0.10.0 // indirect
 	golang.org/x/sys v0.8.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230807174057-1744710a1577 // indirect
